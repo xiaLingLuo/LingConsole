@@ -54,4 +54,4 @@ exampleaddon:hello
 
 ## only-daemon 模式
 
-`--webui false`（仅 Daemon）时指令系统同样可用：可查看/控制插件，插件可注册指令与 Daemon 路由。详见 [插件 API 文档](addon)。
+`--webui false`（仅 Daemon）时指令系统同样可用：可查看/控制插件，插件可注册指令与 Daemon 路由。详见 [插件 API 文档](docs/addon.md)。
