@@ -69,3 +69,8 @@ end  # 优雅关闭程序
 ---
 
 > ⚠ LingConsole 是服务器底层管理程序，需要以 root 运行并具备完整能力。**请勿将面板端口暴露到公网**，建议置于内网或配合防火墙/TLS。
+
+---
+
+## 统计数据
+![lingconsole](https://treasure.xzrui.cn/img/lingconsole "lingconsole")
