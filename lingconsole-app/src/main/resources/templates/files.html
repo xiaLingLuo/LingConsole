@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head th:replace="~{layout :: head('文件管理')}"></head>
+<body>
+
+<th:block th:replace="~{layout :: sidebar('files')}"></th:block>
+
+<main class="lc-main">
+    <header class="lc-header">
+        <h1 class="lc-header__title" id="page-title">文件管理</h1>
+        <div class="lc-header__actions">
+            <span class="lc-header__meta" id="node-name">--</span>
+            <button class="lc-btn" id="btn-new-dir">新建目录</button>
+            <button class="lc-btn" id="btn-new-file">新建文件</button>
+            <button class="lc-btn lc-btn--primary" id="btn-upload">上传</button>
+        </div>
+    </header>
+
+    <section class="lc-content">
+        <div class="lc-card">
+            <div class="lc-filebar">
+                <div class="lc-filebar__breadcrumb" id="breadcrumb">/</div>
+                <button class="lc-btn lc-btn--sm" id="btn-up">上级</button>
+            </div>
+            <div class="lc-filebar lc-filebar--batch" id="batch-bar" style="display:none">
+                <span class="lc-filebar__sel" id="sel-count">已选 0 项</span>
+                <button class="lc-btn lc-btn--sm" id="btn-check-all">全选</button>
+                <button class="lc-btn lc-btn--sm" id="btn-compress-sel">批量压缩</button>
+                <button class="lc-btn lc-btn--sm" id="btn-copy-sel">复制选中</button>
+                <button class="lc-btn lc-btn--sm" id="btn-download-sel">批量下载</button>
+                <button class="lc-btn lc-btn--sm lc-btn--danger" id="btn-delete-sel">批量删除</button>
+            </div>
+            <div class="lc-card__body lc-card__body--flush">
+                <table class="lc-table">
+                    <thead>
+                    <tr>
+                        <th style="width:34px"><input type="checkbox" id="check-all" title="全选"></th>
+                        <th style="width:38%">名称</th>
+                        <th>大小</th>
+                        <th>修改时间</th>
+                        <th style="width:280px">操作</th>
+                    </tr>
+                    </thead>
+                    <tbody id="file-tbody">
+                    <tr><td colspan="5" class="lc-table__empty">加载中...</td></tr>
+                    </tbody>
+                </table>
+                <input type="file" id="file-input" style="display:none" multiple>
+                <div class="lc-file-pager">
+                    <span class="lc-file-pager__label">每页</span>
+                    <select class="lc-input lc-file-pager__size" id="page-size">
+                        <option value="10">10</option>
+                        <option value="50">50</option>
+                        <option value="100" selected>100</option>
+                        <option value="250">250</option>
+                        <option value="500">500</option>
+                        <option value="1000">1000</option>
+                        <option value="all">全部</option>
+                    </select>
+                    <span class="lc-file-pager__info" id="pager-info"></span>
+                    <button class="lc-btn lc-btn--sm" id="btn-pager-prev">上一页</button>
+                    <button class="lc-btn lc-btn--sm" id="btn-pager-next">下一页</button>
+                </div>
+            </div>
+        </div>
+    </section>
+</main>
+
+
+<div class="lc-modal-mask lc-editor-mask" id="editor-modal" style="display:none">
+    <div class="lc-modal lc-modal--wide">
+        <div class="lc-modal__header">
+            <h2 class="lc-modal__title" id="editor-title">编辑文件</h2>
+            <button class="lc-modal__close" id="btn-close-editor">×</button>
+        </div>
+        <div class="lc-modal__body lc-editor-body">
+            <textarea id="editor-area" spellcheck="false"></textarea>
+        </div>
+        <div class="lc-modal__footer">
+            <span class="lc-form__error" id="editor-error"></span>
+            <button class="lc-btn" id="btn-cancel-editor">取消</button>
+            <button class="lc-btn lc-btn--primary" id="btn-save-editor">保存</button>
+        </div>
+    </div>
+</div>
+
+
+<div class="lc-modal-mask" id="create-modal" style="display:none">
+    <div class="lc-modal">
+        <div class="lc-modal__header">
+            <h2 class="lc-modal__title" id="create-title">新建</h2>
+            <button class="lc-modal__close" id="btn-close-create">×</button>
+        </div>
+        <div class="lc-modal__body">
+            <div class="lc-form__group">
+                <label class="lc-form__label">名称</label>
+                <input class="lc-input" type="text" id="create-name" placeholder="请输入名称">
+            </div>
+        </div>
+        <div class="lc-modal__footer">
+            <button class="lc-btn" id="btn-cancel-create">取消</button>
+            <button class="lc-btn lc-btn--primary" id="btn-confirm-create">确定</button>
+        </div>
+    </div>
+</div>
+
+
+<div class="lc-modal-mask" id="zip-modal" style="display:none">
+    <div class="lc-modal">
+        <div class="lc-modal__header">
+            <h2 class="lc-modal__title">7-Zip</h2>
+            <button class="lc-modal__close" id="btn-close-zip">×</button>
+        </div>
+        <div class="lc-modal__body">
+            <div class="lc-pkg-search-hint" id="zip-msg">7zip未安装！请在包管理器安装！</div>
+            <div class="lc-form__group" style="margin-top:10px">
+                <button class="lc-btn lc-btn--primary" id="btn-auto-install">或者尝试自动安装？</button>
+            </div>
+            <div class="lc-pkg-search-hint" id="zip-install-status"></div>
+        </div>
+    </div>
+</div>
+
+
+<div class="lc-modal-mask" id="zip-log-modal" style="display:none">
+    <div class="lc-modal lc-modal--wide">
+        <div class="lc-modal__header">
+            <h2 class="lc-modal__title" id="zip-log-title">7-Zip 输出</h2>
+            <button class="lc-modal__close" id="btn-close-zip-log">×</button>
+        </div>
+        <div class="lc-modal__body">
+            <pre class="lc-pkg-log" id="zip-log-content"></pre>
+        </div>
+        <div class="lc-modal__footer">
+            <button class="lc-btn" id="btn-close-zip-log2">关闭</button>
+        </div>
+    </div>
+</div>
+
+<th:block th:replace="~{layout :: footerScripts}"></th:block>
+<script src="/static/lib/codemirror.min.js"></script>
+<link rel="stylesheet" href="/static/lib/codemirror.min.css">
+<script src="/static/lib/codemirror-shell.min.js"></script>
+<script src="/static/lib/codemirror-yaml.min.js"></script>
+<script src="/static/lib/codemirror-toml.min.js"></script>
+<script src="/static/lib/codemirror-json.min.js"></script>
+<script src="/static/js/pages/page-files.js"></script>
+</body>
+</html>

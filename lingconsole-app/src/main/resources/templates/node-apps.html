@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head th:replace="~{layout :: head('应用管理')}"></head>
+<body>
+
+<th:block th:replace="~{layout :: sidebar('apps')}"></th:block>
+
+<main class="lc-main">
+    <header class="lc-header">
+        <h1 class="lc-header__title">应用管理</h1>
+        <div class="lc-header__actions">
+            <span class="lc-header__meta">当前节点</span>
+            <select class="lc-input" id="node-selector" style="width:220px"></select>
+            <button class="lc-btn lc-btn--primary" id="btn-add-app">+ 新建应用</button>
+        </div>
+    </header>
+
+    <section class="lc-content">
+        <div id="no-node" class="lc-no-node" style="display:none">
+            <div class="lc-no-node__icon">⬢</div>
+            <div class="lc-no-node__title">请先选择节点</div>
+            <div class="lc-no-node__desc">请先在「节点管理」页面设置当前节点, 再进行应用管理</div>
+            <a class="lc-btn lc-btn--primary" href="/nodes">前往节点管理</a>
+        </div>
+        <div class="lc-app-grid" id="app-grid">
+            <div class="lc-card lc-card--placeholder">加载中...</div>
+        </div>
+    </section>
+</main>
+
+
+<div class="lc-modal-mask" id="app-modal" style="display:none">
+    <div class="lc-modal">
+        <div class="lc-modal__header">
+            <h2 class="lc-modal__title">新建应用</h2>
+            <button class="lc-modal__close" id="btn-close-app-modal">×</button>
+        </div>
+        <div class="lc-modal__body">
+            <div class="lc-form__group">
+                <label class="lc-form__label">应用 ID (创建后不可修改)</label>
+                <input class="lc-input" type="text" id="app-id" placeholder="如: mcserver">
+            </div>
+            <div class="lc-form__group">
+                <label class="lc-form__label">应用名称</label>
+                <input class="lc-input" type="text" id="app-name" placeholder="如: 我的服务器">
+            </div>
+            <div class="lc-form__group">
+                <label class="lc-form__label">启动命令</label>
+                <input class="lc-input" type="text" id="app-command" placeholder="如: java -jar server.jar">
+            </div>
+            <div class="lc-form__group">
+                <label class="lc-form__label">类型</label>
+                <select class="lc-input" id="app-type">
+                    <option value="general">general (常规模式)</option>
+                    <option value="docker">docker (容器模式, 开发中)</option>
+                </select>
+            </div>
+            <div class="lc-form__group lc-form__check">
+                <label><input type="checkbox" id="app-autostart"> Daemon 启动时自动运行</label>
+            </div>
+            <div class="lc-form__group lc-form__check">
+                <label><input type="checkbox" id="app-autorestart"> 崩溃后自动重启</label>
+            </div>
+            <div class="lc-form__error" id="app-error"></div>
+        </div>
+        <div class="lc-modal__footer">
+            <button class="lc-btn" id="btn-cancel-app-modal">取消</button>
+            <button class="lc-btn lc-btn--primary" id="btn-save-app">创建</button>
+        </div>
+    </div>
+</div>
+
+
+<div class="lc-modal-mask" id="adv-modal" style="display:none">
+    <div class="lc-modal lc-modal--wide">
+        <div class="lc-modal__header">
+            <h2 class="lc-modal__title" id="adv-modal-title">高级配置</h2>
+            <button class="lc-modal__close" id="btn-close-adv-modal">×</button>
+        </div>
+        <div class="lc-modal__body">
+            <div class="lc-form__group">
+                <label class="lc-form__label">应用名称</label>
+                <input class="lc-input" type="text" id="adv-name">
+            </div>
+            <div class="lc-form__group">
+                <label class="lc-form__label">启动命令</label>
+                <input class="lc-input" type="text" id="adv-command">
+            </div>
+            <div class="lc-form__group">
+                <label class="lc-form__label">类型</label>
+                <select class="lc-input" id="adv-type">
+                    <option value="general">general (普通进程)</option>
+                    <option value="docker">docker (容器, 开发中)</option>
+                </select>
+            </div>
+            <div class="lc-form__group lc-form__check">
+                <label><input type="checkbox" id="adv-autostart"> 自动启动</label>
+            </div>
+            <div class="lc-form__group lc-form__check">
+                <label><input type="checkbox" id="adv-autorestart"> 崩溃后自动重启</label>
+            </div>
+            <div class="lc-form__group">
+                <label class="lc-form__label">最大重启次数</label>
+                <input class="lc-input" type="number" id="adv-maxrestart" value="3" min="0">
+            </div>
+            <div class="lc-form__group">
+                <label class="lc-form__label">工作目录 (WorkDIR)</label>
+                <input class="lc-input" type="text" id="adv-workdir" placeholder="应用数据目录">
+            </div>
+            <div class="lc-form__group">
+                <label class="lc-form__label">启动用户 (Linux 专用, 留空则以 Daemon 用户运行)</label>
+                <input class="lc-input" type="text" id="adv-runas" placeholder="如: www-data">
+            </div>
+            <div class="lc-form__group">
+                <label class="lc-form__label">控制台编码</label>
+                <input class="lc-input" type="text" id="adv-encoding" value="UTF-8">
+            </div>
+            <div class="lc-form__group">
+                <label class="lc-form__label">PTY 类型</label>
+                <select class="lc-input" id="adv-pty">
+                    <option value="xterm-256color">xterm-256color</option>
+                    <option value="xterm-color">xterm-color</option>
+                    <option value="xterm">xterm</option>
+                    <option value="vt100">vt100</option>
+                    <option value="linux">linux</option>
+                    <option value="screen">screen</option>
+                </select>
+            </div>
+            <div class="lc-form__group">
+                <label class="lc-form__label">额外参数 (逗号分隔)</label>
+                <input class="lc-input" type="text" id="adv-args" placeholder="如: --port,25565">
+            </div>
+            <div class="lc-form__group">
+                <label class="lc-form__label">环境变量 (每行 KEY=VALUE)</label>
+                <textarea class="lc-input" id="adv-env" rows="3" style="resize:vertical"></textarea>
+            </div>
+            <div class="lc-form__error" id="adv-error"></div>
+        </div>
+        <div class="lc-modal__footer">
+            <span class="lc-config-note" style="margin:0;flex:1" id="adv-note">应用停止状态下可修改全部配置</span>
+            <button class="lc-btn" id="btn-cancel-adv-modal">取消</button>
+            <button class="lc-btn lc-btn--primary" id="btn-save-adv">保存</button>
+        </div>
+    </div>
+</div>
+
+<th:block th:replace="~{layout :: footerScripts}"></th:block>
+<script src="/static/js/pages/page-node-apps.js"></script>
+</body>
+</html>

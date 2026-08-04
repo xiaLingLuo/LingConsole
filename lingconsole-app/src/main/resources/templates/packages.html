@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head th:replace="~{layout :: head('包管理器')}"></head>
+<body>
+
+<th:block th:replace="~{layout :: sidebar('packages')}"></th:block>
+
+<main class="lc-main">
+    <header class="lc-header">
+        <h1 class="lc-header__title">包管理器</h1>
+        <div class="lc-header__actions">
+            <span class="lc-header__meta">当前节点</span>
+            <select class="lc-input" id="node-selector" style="width:220px"></select>
+            <button class="lc-btn lc-btn--primary" id="btn-install">安装新软件</button>
+            <button class="lc-btn" id="btn-update">更新软件源</button>
+            <button class="lc-btn" id="btn-upgrade">升级</button>
+            <button class="lc-btn" id="btn-full-upgrade">智能升级</button>
+            <button class="lc-btn" id="btn-autoremove">清理无用依赖</button>
+        </div>
+    </header>
+
+    <section class="lc-content" id="pkg-content">
+        <div id="no-node" class="lc-no-node" style="display:none">
+            <div class="lc-no-node__icon">⬓</div>
+            <div class="lc-no-node__title">请先选择节点</div>
+            <div class="lc-no-node__desc">请先在「节点管理」页面设置当前节点, 再进行包管理</div>
+            <a class="lc-btn lc-btn--primary" href="/nodes">前往节点管理</a>
+        </div>
+
+        <div id="unsupported" class="lc-no-node" style="display:none">
+            <div class="lc-no-node__icon">⚠</div>
+            <div class="lc-no-node__title">该系统暂未支持！请直接使用终端管理！</div>
+            <div class="lc-no-node__desc" id="unsupported-desc"></div>
+        </div>
+
+        <div id="pkg-body" style="width:100%; display:none">
+            <div class="lc-card">
+                <div class="lc-card__header">
+                    <h2 class="lc-card__title">已安装的包 (<span id="pkg-count">0</span>)</h2>
+                    <button class="lc-btn lc-btn--sm" id="btn-refresh">刷新列表</button>
+                </div>
+                <div class="lc-card__body lc-card__body--flush">
+                    <table class="lc-table">
+                        <thead>
+                        <tr>
+                            <th style="width:40%">名称</th>
+                            <th>版本</th>
+                            <th style="width:110px">操作</th>
+                        </tr>
+                        </thead>
+                        <tbody id="pkg-tbody">
+                        <tr><td colspan="3" class="lc-table__empty">加载中...</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </section>
+</main>
+
+
+<div class="lc-modal-mask" id="search-modal" style="display:none">
+    <div class="lc-modal lc-modal--wide">
+        <div class="lc-modal__header">
+            <h2 class="lc-modal__title" id="search-title">搜索结果</h2>
+            <button class="lc-modal__close" id="btn-close-search">×</button>
+        </div>
+        <div class="lc-modal__body">
+            <div class="lc-pkg-search-hint" id="search-hint"></div>
+            <div id="search-list" class="lc-pkg-search-list"></div>
+        </div>
+    </div>
+</div>
+
+
+<div class="lc-modal-mask" id="log-modal" style="display:none">
+    <div class="lc-modal lc-modal--wide">
+        <div class="lc-modal__header">
+            <h2 class="lc-modal__title" id="log-title">执行日志</h2>
+            <button class="lc-modal__close" id="btn-close-log">×</button>
+        </div>
+        <div class="lc-modal__body">
+            <pre class="lc-pkg-log" id="log-content"></pre>
+        </div>
+        <div class="lc-modal__footer">
+            <button class="lc-btn" id="btn-close-log2">关闭</button>
+        </div>
+    </div>
+</div>
+
+<th:block th:replace="~{layout :: footerScripts}"></th:block>
+<script src="/static/js/pages/page-packages.js"></script>
+</body>
+</html>

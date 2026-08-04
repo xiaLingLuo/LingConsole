@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head th:replace="~{layout :: head('系统设置')}"></head>
+<body>
+
+<th:block th:replace="~{layout :: sidebar('settings')}"></th:block>
+
+<main class="lc-main">
+    <header class="lc-header">
+        <h1 class="lc-header__title">系统设置</h1>
+    </header>
+
+    <section class="lc-content">
+        <div class="lc-card">
+            <div class="lc-card__header">
+                <h2 class="lc-card__title">系统信息</h2>
+            </div>
+            <div class="lc-card__body">
+                <table class="lc-table lc-config-table">
+                    <tbody>
+                    <tr>
+                        <td class="lc-config-key">程序版本</td>
+                        <td><code th:text="${version}">--</code></td>
+                    </tr>
+                    <tr>
+                        <td class="lc-config-key">仓库地址</td>
+                        <td><a th:href="${repoUrl}" target="_blank" rel="noopener" th:text="${repoName}">--</a></td>
+                    </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <div class="lc-card">
+            <div class="lc-card__header">
+                <h2 class="lc-card__title">面板配置 (WebUI)</h2>
+            </div>
+            <div class="lc-card__body">
+                <table class="lc-table lc-config-table" id="panel-config">
+                    <tbody>
+                    <tr><td colspan="2" class="lc-table__empty">加载中...</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <div class="lc-card">
+            <div class="lc-card__header">
+                <h2 class="lc-card__title">Daemon 配置</h2>
+            </div>
+            <div class="lc-card__body">
+                <table class="lc-table lc-config-table" id="daemon-config">
+                    <tbody>
+                    <tr><td colspan="2" class="lc-table__empty">加载中...</td></tr>
+                    </tbody>
+                </table>
+                <div class="lc-config-note">配置文件位于 /lingConsole/web/config.toml 与 /lingConsole/damon/config.toml, 修改后重启生效。密钥不在此展示。</div>
+            </div>
+        </div>
+
+        <div class="lc-card">
+            <div class="lc-card__header">
+                <h2 class="lc-card__title">修改密码</h2>
+            </div>
+            <div class="lc-card__body">
+                <form class="lc-form lc-form--narrow" id="password-form">
+                    <div class="lc-form__group">
+                        <label class="lc-form__label">原密码</label>
+                        <input class="lc-input" type="password" id="old-password">
+                    </div>
+                    <div class="lc-form__group">
+                        <label class="lc-form__label">新密码</label>
+                        <input class="lc-input" type="password" id="new-password">
+                    </div>
+                    <div class="lc-form__group">
+                        <label class="lc-form__label">确认新密码</label>
+                        <input class="lc-input" type="password" id="confirm-password">
+                    </div>
+                    <div class="lc-form__error" id="password-error"></div>
+                    <button class="lc-btn lc-btn--primary" type="submit">保存修改</button>
+                </form>
+            </div>
+        </div>
+    </section>
+</main>
+
+<th:block th:replace="~{layout :: footerScripts}"></th:block>
+<script src="/static/js/pages/page-settings.js"></script>
+</body>
+</html>

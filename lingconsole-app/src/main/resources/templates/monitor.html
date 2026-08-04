@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head th:replace="~{layout :: head('系统监控')}"></head>
+<body>
+
+<th:block th:replace="~{layout :: sidebar('monitor')}"></th:block>
+
+<main class="lc-main">
+    <header class="lc-header">
+        <h1 class="lc-header__title">系统监控</h1>
+        <div class="lc-header__actions">
+            <span class="lc-header__meta">当前节点</span>
+            <select class="lc-input" id="node-selector" style="width:220px"></select>
+        </div>
+    </header>
+
+    <section class="lc-content" id="monitor-content">
+        <div id="no-node" class="lc-no-node" style="display:none">
+            <div class="lc-no-node__icon">◔</div>
+            <div class="lc-no-node__title">请先选择节点</div>
+            <div class="lc-no-node__desc">请先在「节点管理」页面设置当前节点, 再进行系统监控</div>
+            <a class="lc-btn lc-btn--primary" href="/nodes">前往节点管理</a>
+        </div>
+        <div id="monitor-body" style="display:flex; flex-direction:column; gap:20px; width:100%">
+        <div class="lc-grid lc-grid--4">
+            <div class="lc-card lc-stat">
+                <div class="lc-stat__label">CPU 使用率</div>
+                <div class="lc-stat__value" id="stat-cpu">--</div>
+                <div class="lc-stat__hint" id="stat-load">负载 --</div>
+            </div>
+            <div class="lc-card lc-stat">
+                <div class="lc-stat__label">内存</div>
+                <div class="lc-stat__value lc-stat__value--sm" id="stat-mem">--</div>
+                <div class="lc-stat__hint" id="stat-mem-pct">--</div>
+            </div>
+            <div class="lc-card lc-stat">
+                <div class="lc-stat__label">网络下行</div>
+                <div class="lc-stat__value lc-stat__value--sm" id="stat-rx">--</div>
+                <div class="lc-stat__hint">累计 <span id="stat-rx-total">--</span></div>
+            </div>
+            <div class="lc-card lc-stat">
+                <div class="lc-stat__label">网络上行</div>
+                <div class="lc-stat__value lc-stat__value--sm" id="stat-tx">--</div>
+                <div class="lc-stat__hint">累计 <span id="stat-tx-total">--</span></div>
+            </div>
+        </div>
+
+        <div class="lc-grid lc-grid--2">
+            <div class="lc-card">
+                <div class="lc-card__header"><h2 class="lc-card__title">CPU 使用率</h2></div>
+                <div class="lc-card__body"><div id="chart-cpu" class="lc-chart"></div></div>
+            </div>
+            <div class="lc-card">
+                <div class="lc-card__header"><h2 class="lc-card__title">内存使用</h2></div>
+                <div class="lc-card__body"><div id="chart-mem" class="lc-chart"></div></div>
+            </div>
+            <div class="lc-card">
+                <div class="lc-card__header"><h2 class="lc-card__title">网络速率 (bytes/s)</h2></div>
+                <div class="lc-card__body"><div id="chart-net" class="lc-chart"></div></div>
+            </div>
+            <div class="lc-card">
+                <div class="lc-card__header"><h2 class="lc-card__title">磁盘使用</h2></div>
+                <div class="lc-card__body"><div id="chart-disk" class="lc-chart"></div></div>
+            </div>
+        </div>
+        </div>
+    </section>
+</main>
+
+<th:block th:replace="~{layout :: footerScripts}"></th:block>
+<script src="/static/js/pages/page-monitor.js"></script>
+</body>
+</html>

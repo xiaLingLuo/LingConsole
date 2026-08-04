@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head th:replace="~{layout :: head('仪表盘')}"></head>
+<body>
+
+<th:block th:replace="~{layout :: sidebar('dashboard')}"></th:block>
+
+<main class="lc-main">
+    <header class="lc-header">
+        <h1 class="lc-header__title">仪表盘</h1>
+        <span class="lc-header__meta" id="header-time">--</span>
+    </header>
+
+    <section class="lc-content">
+        <div class="lc-grid lc-grid--4">
+            <div class="lc-card lc-stat">
+                <div class="lc-stat__label">节点总数</div>
+                <div class="lc-stat__value" id="stat-nodes">--</div>
+                <div class="lc-stat__hint">在线 <span id="stat-online">--</span></div>
+            </div>
+            <div class="lc-card lc-stat">
+                <div class="lc-stat__label">CPU</div>
+                <div class="lc-stat__value" id="stat-cpu-cores">--</div>
+                <div class="lc-stat__hint" id="stat-cpu-usage">--</div>
+            </div>
+            <div class="lc-card lc-stat">
+                <div class="lc-stat__label">程序RAM</div>
+                <div class="lc-stat__value" id="stat-mem">--</div>
+                <div class="lc-stat__hint" id="stat-mem-free">--</div>
+            </div>
+            <div class="lc-card lc-stat">
+                <div class="lc-stat__label">操作系统</div>
+                <div class="lc-stat__value lc-stat__value--sm" id="stat-os">--</div>
+                <div class="lc-stat__hint" id="stat-uptime">--</div>
+            </div>
+        </div>
+
+        <div class="lc-card">
+            <div class="lc-card__header">
+                <h2 class="lc-card__title">RAM使用趋势</h2>
+                <span class="lc-card__hint">JVM 内存</span>
+            </div>
+            <div class="lc-card__body">
+                <div id="memory-chart" class="lc-chart"></div>
+            </div>
+        </div>
+
+        <div class="lc-card">
+            <div class="lc-card__header">
+                <h2 class="lc-card__title">节点状态</h2>
+            </div>
+            <div class="lc-card__body">
+                <table class="lc-table">
+                    <thead>
+                    <tr>
+                        <th>名称</th>
+                        <th>URL</th>
+                        <th>状态</th>
+                    </tr>
+                    </thead>
+                    <tbody id="nodes-tbody">
+                    <tr><td colspan="4" class="lc-table__empty">加载中...</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </section>
+</main>
+
+<th:block th:replace="~{layout :: footerScripts}"></th:block>
+<script src="/static/js/pages/page-dashboard.js"></script>
+</body>
+</html>

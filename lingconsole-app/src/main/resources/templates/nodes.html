@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head th:replace="~{layout :: head('节点管理')}"></head>
+<body>
+
+<th:block th:replace="~{layout :: sidebar('nodes')}"></th:block>
+
+<main class="lc-main">
+    <header class="lc-header">
+        <h1 class="lc-header__title">节点管理</h1>
+        <button class="lc-btn lc-btn--primary" id="btn-add-node">+ 添加节点</button>
+    </header>
+
+    <section class="lc-content">
+        <div class="lc-app-grid" id="node-grid">
+            <div class="lc-card lc-card--placeholder">加载中...</div>
+        </div>
+    </section>
+</main>
+
+
+<div class="lc-modal-mask" id="node-modal" style="display:none">
+    <div class="lc-modal">
+        <div class="lc-modal__header">
+            <h2 class="lc-modal__title">添加节点</h2>
+            <button class="lc-modal__close" id="btn-close-modal">×</button>
+        </div>
+        <div class="lc-modal__body">
+            <div class="lc-form__group">
+                <label class="lc-form__label">节点 ID (创建后不可修改)</label>
+                <input class="lc-input" type="text" id="node-id" placeholder="如: shanghai1">
+            </div>
+            <div class="lc-form__group">
+                <label class="lc-form__label">节点名称</label>
+                <input class="lc-input" type="text" id="node-name" placeholder="如: 上海主服务器">
+            </div>
+            <div class="lc-form__group">
+                <label class="lc-form__label">Daemon URL</label>
+                <input class="lc-input" type="text" id="node-url" placeholder="如: ws://192.168.1.100:55700 或 wss://example.com:55700">
+            </div>
+            <div class="lc-form__group">
+                <label class="lc-form__label">Daemon Key</label>
+                <input class="lc-input" type="text" id="node-key" placeholder="/lingConsole/damon/config.toml 中的 key">
+            </div>
+        </div>
+        <div class="lc-modal__footer">
+            <button class="lc-btn" id="btn-cancel-modal">取消</button>
+            <button class="lc-btn lc-btn--primary" id="btn-save-node">保存</button>
+        </div>
+    </div>
+</div>
+
+
+<div class="lc-modal-mask" id="config-modal" style="display:none">
+    <div class="lc-modal">
+        <div class="lc-modal__header">
+            <h2 class="lc-modal__title" id="config-modal-title">节点配置</h2>
+            <button class="lc-modal__close" id="btn-close-config-modal">×</button>
+        </div>
+        <div class="lc-modal__body">
+            <div class="lc-form__group">
+                <label class="lc-form__label">Daemon URL</label>
+                <input class="lc-input" type="text" id="config-url" placeholder="如: ws://192.168.1.100:55700">
+            </div>
+            <div class="lc-form__group">
+                <label class="lc-form__label">Daemon Key</label>
+                <input class="lc-input" type="text" id="config-key" placeholder="留空则不修改">
+                <div class="lc-config-note">你可在目标服务器 /lingConsole/damon/config.toml 中找到key</div>
+            </div>
+            <div class="lc-form__error" id="config-error"></div>
+        </div>
+        <div class="lc-modal__footer">
+            <button class="lc-btn" id="btn-cancel-config-modal">取消</button>
+            <button class="lc-btn lc-btn--primary" id="btn-save-config">保存</button>
+        </div>
+    </div>
+</div>
+
+
+<div class="lc-modal-mask" id="connect-modal" style="display:none">
+    <div class="lc-modal lc-modal--wide">
+        <div class="lc-modal__header">
+            <h2 class="lc-modal__title" id="connect-modal-title">节点连接测试</h2>
+            <button class="lc-modal__close" id="btn-close-connect-modal">×</button>
+        </div>
+        <div class="lc-modal__body">
+            <div style="display:flex;gap:16px;align-items:stretch">
+                <div style="flex:0 0 240px;border:1px solid #e5e5e5;border-radius:8px;padding:14px;background:#fafafa">
+                    <div class="lc-form__label">Panel → Daemon</div>
+                    <div id="connect-panel-status" style="font-size:16px;font-weight:600;margin-top:10px;color:#94a3b8">测试中...</div>
+                    <div class="lc-config-note" style="margin-top:10px;line-height:1.6">左侧表示面板到守护进程的连通性检测结果。<br>若离线, 请确保 55700 端口可被访问。</div>
+                </div>
+                <div style="flex:1;min-width:0">
+                    <div class="lc-form__label">浏览器 → Daemon</div>
+                    <iframe id="connect-iframe" title="Daemon 页面" style="width:100%;height:300px;border:1px solid #e5e5e5;border-radius:8px;background:#fff"></iframe>
+                    <div class="lc-config-note" style="margin-top:8px;line-height:1.6">观察下方浏览器是否能显示"LingConsole 守护程序"页面：能显示说明 Daemon 端口可访问（连接成功）；空白或被拒绝说明端口/防火墙未放行。</div>
+                </div>
+            </div>
+        </div>
+        <div class="lc-modal__footer">
+            <button class="lc-btn lc-btn--primary" id="btn-close-connect-modal-2">关闭</button>
+        </div>
+    </div>
+</div>
+
+
+<div class="lc-modal-mask" id="style-modal" style="display:none">
+    <div class="lc-modal">
+        <div class="lc-modal__header">
+            <h2 class="lc-modal__title" id="style-modal-title">系统偏好</h2>
+            <button class="lc-modal__close" id="btn-close-style-modal">×</button>
+        </div>
+        <div class="lc-modal__body">
+            <div class="lc-form__group">
+                <label class="lc-form__label">文件管理路径风格</label>
+                <div class="lc-perm-box" style="flex-direction:column;align-items:flex-start">
+                    <label class="lc-perm-check"><input type="radio" name="node-style" value="auto" checked> 自动探测 (建议)</label>
+                    <label class="lc-perm-check"><input type="radio" name="node-style" value="windows"> 类 Windows 风格</label>
+                    <label class="lc-perm-check"><input type="radio" name="node-style" value="linux"> 类 Linux 风格</label>
+                </div>
+            </div>
+            <div class="lc-form__error" id="style-error"></div>
+        </div>
+        <div class="lc-modal__footer">
+            <button class="lc-btn" id="btn-cancel-style-modal">取消</button>
+            <button class="lc-btn lc-btn--primary" id="btn-save-style">保存</button>
+        </div>
+    </div>
+</div>
+
+
+<div class="lc-modal-mask" id="style-confirm-modal" style="display:none">
+    <div class="lc-modal">
+        <div class="lc-modal__header">
+            <h2 class="lc-modal__title">⚠ 修改系统偏好</h2>
+            <button class="lc-modal__close" id="btn-close-style-confirm">×</button>
+        </div>
+        <div class="lc-modal__body">
+            <p style="font-size:14px;color:#1A1A2E;margin:0 0 8px">你确定要修改系统偏好吗?</p>
+            <p style="font-size:14px;color:#FF4D4F;font-weight:600">你不应该修改系统偏好！除非你真的知道你在做什么！</p>
+        </div>
+        <div class="lc-modal__footer">
+            <button class="lc-btn" id="btn-cancel-style-confirm">取消</button>
+            <button class="lc-btn lc-btn--danger" id="btn-confirm-style">确认修改</button>
+        </div>
+    </div>
+</div>
+
+<th:block th:replace="~{layout :: footerScripts}"></th:block>
+<script src="/static/js/pages/page-nodes.js"></script>
+</body>
+</html>

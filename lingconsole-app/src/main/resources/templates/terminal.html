@@ -1,0 +1,24 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head th:replace="~{layout :: head('WebShell')}">
+</head>
+<style>html { background: #1A1A2E; }</style>
+<body class="lc-terminal-body">
+
+<div class="lc-terminal-header">
+    <span class="lc-terminal-header__title">WebShell</span>
+    <span class="lc-terminal-header__meta" id="terminal-meta">连接中...</span>
+    <button class="lc-btn lc-btn--ghost lc-btn--sm" id="btn-stop-app" style="display:none">停止</button>
+    <button class="lc-btn lc-btn--ghost lc-btn--sm" id="btn-restart-app" style="display:none">重启</button>
+    <button class="lc-btn lc-btn--ghost lc-btn--sm" id="btn-clear-terminal">清屏</button>
+    <button class="lc-btn lc-btn--ghost lc-btn--sm" onclick="window.closeTerminal()">关闭</button>
+</div>
+<div id="terminal-container" class="lc-terminal-container"></div>
+
+<th:block th:replace="~{layout :: footerScripts}"></th:block>
+<script src="/static/lib/xterm.min.js"></script>
+<script src="/static/lib/addon-fit.min.js"></script>
+<link rel="stylesheet" href="/static/lib/xterm.css">
+<script src="/static/js/pages/page-terminal.js"></script>
+</body>
+</html>

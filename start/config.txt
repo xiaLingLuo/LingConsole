@@ -1,0 +1,7 @@
+jarName=LingConsole.jar
+java_path=/opt/lingConsole/java/bin/java
+MaxRAM=auto
+MinRAM=auto
+web=true
+damon=true
+singleUserMode=false

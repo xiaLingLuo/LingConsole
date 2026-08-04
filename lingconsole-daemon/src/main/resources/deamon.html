@@ -1,0 +1,483 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LingConsole 守护程序</title>
+    <style>
+        :root {
+            --rose-50: #fff5f6;
+            --rose-100: #ffe4e8;
+            --rose-200: #fecdd5;
+            --rose-300: #fda4b3;
+            --rose-400: #fb7189;
+            --rose-500: #f43f5e;
+            --rose-600: #e11d48;
+            --rose-700: #be1230;
+            --slate-50: #f8fafc;
+            --slate-100: #f1f5f9;
+            --slate-200: #e2e8f0;
+            --slate-300: #cbd5e1;
+            --slate-400: #94a3b8;
+            --slate-500: #64748b;
+            --slate-600: #475569;
+            --slate-700: #334155;
+            --slate-800: #1e293b;
+            --slate-900: #0f172a;
+            --white: #ffffff;
+            --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.04);
+            --shadow-md: 0 4px 16px rgba(190, 50, 70, 0.08), 0 1px 4px rgba(0, 0, 0, 0.04);
+            --shadow-lg: 0 12px 32px rgba(190, 50, 70, 0.1), 0 2px 8px rgba(0, 0, 0, 0.04);
+            --shadow-xl: 0 20px 48px rgba(180, 40, 60, 0.12), 0 4px 12px rgba(0, 0, 0, 0.05);
+            --radius-sm: 10px;
+            --radius-md: 16px;
+            --radius-lg: 22px;
+            --radius-full: 9999px;
+            --ease-out-expo: cubic-bezier(0.16, 1, 0.3, 1);
+            --ease-in-out: cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans SC", sans-serif;
+            background: linear-gradient(170deg, #fff5f6 0%, #ffe8ed 18%, #fdd4de 40%, #fecdd5 62%, #ffe0e6 82%, #fff5f7 100%);
+            background-attachment: fixed;
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 24px;
+            -webkit-font-smoothing: antialiased;
+            -moz-osx-font-smoothing: grayscale;
+            position: relative;
+            overflow-x: hidden;
+            -webkit-user-select: none;
+            -moz-user-select: none;
+            -ms-user-select: none;
+            user-select: none;
+        }
+
+        body::before {
+            content: '';
+            position: fixed;
+            top: -180px;
+            right: -120px;
+            width: 520px;
+            height: 520px;
+            background: radial-gradient(circle, rgba(251, 160, 180, 0.18) 0%, transparent 70%);
+            border-radius: 50%;
+            pointer-events: none;
+            z-index: 0;
+        }
+
+        body::after {
+            content: '';
+            position: fixed;
+            bottom: -140px;
+            left: -100px;
+            width: 440px;
+            height: 440px;
+            background: radial-gradient(circle, rgba(253, 140, 165, 0.14) 0%, transparent 70%);
+            border-radius: 50%;
+            pointer-events: none;
+            z-index: 0;
+        }
+
+        .app-shell {
+            position: relative;
+            z-index: 1;
+            width: 100%;
+            max-width: 520px;
+            animation: shell-entry 0.7s var(--ease-out-expo) both;
+        }
+
+        @keyframes shell-entry {
+            from {
+                opacity: 0;
+                transform: translateY(18px) scale(0.97);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0) scale(1);
+            }
+        }
+
+        .card-panel {
+            background: var(--white);
+            border-radius: var(--radius-lg);
+            padding: 44px 40px 36px;
+            box-shadow: var(--shadow-xl);
+            position: relative;
+            overflow: hidden;
+            transition: box-shadow 0.5s var(--ease-in-out), transform 0.5s var(--ease-out-expo);
+        }
+
+        .card-panel:hover {
+            box-shadow: 0 28px 56px rgba(175, 38, 56, 0.13), 0 6px 16px rgba(0, 0, 0, 0.05);
+            transform: translateY(-2px);
+        }
+
+        .card-panel::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 3px;
+            background: linear-gradient(90deg, #f9a8b8, #f47289, #f9a8b8);
+            border-radius: 3px 3px 0 0;
+            opacity: 0.85;
+        }
+
+        .brand-spot {
+            width: 58px;
+            height: 58px;
+            margin: 0 auto 22px;
+            background: linear-gradient(145deg, #f9a8b8 0%, #f47289 40%, #e8556f 100%);
+            border-radius: var(--radius-md);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: #ffffff;
+            font-size: 24px;
+            font-weight: 700;
+            letter-spacing: -0.5px;
+            box-shadow: 0 8px 22px rgba(235, 90, 115, 0.28), 0 2px 6px rgba(200, 60, 85, 0.16);
+            position: relative;
+            transition: transform 0.35s var(--ease-out-expo), box-shadow 0.35s var(--ease-in-out);
+            user-select: none;
+        }
+
+        .brand-spot:hover {
+            transform: translateY(-3px) rotate(-1deg);
+            box-shadow: 0 14px 30px rgba(235, 90, 115, 0.34), 0 3px 8px rgba(200, 60, 85, 0.2);
+        }
+
+        .brand-spot::after {
+            content: '';
+            position: absolute;
+            inset: -5px;
+            border-radius: 20px;
+            background: transparent;
+            border: 2px dashed rgba(244, 114, 137, 0.22);
+            pointer-events: none;
+            animation: orbit-pulse 3.6s ease-in-out infinite;
+        }
+
+        @keyframes orbit-pulse {
+            0%,
+            100% {
+                opacity: 0.35;
+                transform: scale(1);
+            }
+            50% {
+                opacity: 0.7;
+                transform: scale(1.06);
+            }
+        }
+
+        .heading-primary {
+            font-size: 23px;
+            font-weight: 650;
+            color: var(--slate-800);
+            margin-bottom: 14px;
+            line-height: 1.35;
+            letter-spacing: -0.3px;
+            text-align: center;
+        }
+
+        .text-block {
+            font-size: 15px;
+            color: var(--slate-500);
+            line-height: 1.65;
+            margin-bottom: 8px;
+            text-align: center;
+            font-weight: 420;
+            letter-spacing: 0.1px;
+        }
+
+        .text-block+.text-block {
+            margin-bottom: 6px;
+        }
+
+        .ref-zone {
+            margin-top: 26px;
+            padding-top: 22px;
+            border-top: 1px solid #fde8ec;
+            text-align: center;
+        }
+
+        .ref-label {
+            font-size: 13px;
+            color: #b0a0a6;
+            margin-bottom: 7px;
+            font-weight: 500;
+            letter-spacing: 0.2px;
+            text-transform: uppercase;
+            font-size: 11px;
+            letter-spacing: 0.5px;
+        }
+
+        .ref-link {
+            color: #e4526b;
+            text-decoration: none;
+            font-weight: 530;
+            font-size: 14px;
+            transition: color 0.25s var(--ease-in-out), letter-spacing 0.3s var(--ease-out-expo);
+            word-break: break-all;
+            position: relative;
+        }
+
+        .ref-link::after {
+            content: '';
+            position: absolute;
+            bottom: -2px;
+            left: 0;
+            right: 0;
+            height: 1.5px;
+            background: #f47289;
+            border-radius: 1px;
+            transform: scaleX(0);
+            transform-origin: left;
+            transition: transform 0.3s var(--ease-out-expo);
+        }
+
+        .ref-link:hover {
+            color: #d43d56;
+            letter-spacing: 0.3px;
+        }
+        .ref-link:hover::after {
+            transform: scaleX(1);
+        }
+
+        .locale-bar {
+            margin-top: 30px;
+            display: flex;
+            justify-content: center;
+            gap: 5px;
+            flex-wrap: wrap;
+            background: #fef5f7;
+            border-radius: var(--radius-full);
+            padding: 5px 6px;
+            display: inline-flex;
+            margin-left: auto;
+            margin-right: auto;
+            width: fit-content;
+            box-shadow: inset 0 1px 3px rgba(200, 160, 170, 0.12);
+        }
+
+        .locale-bar-wrapper {
+            display: flex;
+            justify-content: center;
+            margin-top: 28px;
+        }
+
+        .locale-opt {
+            padding: 8px 16px;
+            border: none;
+            background: transparent;
+            border-radius: var(--radius-full);
+            color: #b08a95;
+            cursor: pointer;
+            font-size: 13px;
+            font-weight: 520;
+            transition: all 0.28s var(--ease-in-out);
+            white-space: nowrap;
+            letter-spacing: 0.1px;
+            position: relative;
+            user-select: none;
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        .locale-opt:hover {
+            color: #d4687c;
+            background: rgba(244, 114, 137, 0.07);
+        }
+
+        .locale-opt.is-selected {
+            background: linear-gradient(135deg, #f47289 0%, #e8556f 100%);
+            color: #ffffff;
+            font-weight: 580;
+            box-shadow: 0 3px 10px rgba(225, 70, 100, 0.3), 0 1px 3px rgba(190, 50, 70, 0.18);
+            letter-spacing: 0.2px;
+        }
+
+        .locale-opt.is-selected:hover {
+            background: linear-gradient(135deg, #f35973 0%, #e04862 100%);
+            color: #ffffff;
+            box-shadow: 0 5px 14px rgba(220, 65, 95, 0.36), 0 2px 5px rgba(185, 45, 65, 0.2);
+        }
+
+        @media (max-width: 600px) {
+            .card-panel {
+                padding: 32px 22px 28px;
+                border-radius: var(--radius-md);
+            }
+            .heading-primary {
+                font-size: 19px;
+                letter-spacing: -0.2px;
+            }
+            .text-block {
+                font-size: 13.5px;
+            }
+            .brand-spot {
+                width: 48px;
+                height: 48px;
+                font-size: 20px;
+                border-radius: 13px;
+                margin-bottom: 16px;
+            }
+            .brand-spot::after {
+                border-radius: 17px;
+                inset: -4px;
+            }
+            .locale-opt {
+                padding: 7px 12px;
+                font-size: 12px;
+            }
+            .locale-bar {
+                gap: 3px;
+                padding: 4px 5px;
+            }
+            .ref-link {
+                font-size: 12.5px;
+            }
+        }
+
+        @media (max-width: 380px) {
+            .card-panel {
+                padding: 26px 16px 24px;
+            }
+            .heading-primary {
+                font-size: 17px;
+            }
+            .text-block {
+                font-size: 12.5px;
+            }
+            .locale-opt {
+                padding: 6px 10px;
+                font-size: 11px;
+            }
+            .locale-bar {
+                gap: 2px;
+                padding: 3px 4px;
+                border-radius: var(--radius-full);
+            }
+        }
+    </style>
+</head>
+<body>
+<main class="app-shell">
+    <article class="card-panel">
+        <div id="view-root">
+            <div class="brand-spot" aria-hidden="true">&#9679;</div>
+            <h2 class="heading-primary" id="main-title">LingConsole 程序运行中</h2>
+            <p class="text-block" id="para-1">此端口上正在运行 LingConsole 的 守护程序，正常情况下，你不应该直接访问！</p>
+            <p class="text-block" id="para-2"></p>
+
+            <div class="ref-zone">
+                <div class="ref-label" id="ref-caption">帮助文档</div>
+                <a class="ref-link" href="https://im.xz.cn/docs/lingconsole" target="_blank" rel="noopener noreferrer">
+                    https://im.xz.cn/docs/lingconsole
+                </a>
+            </div>
+        </div>
+
+        <div class="locale-bar-wrapper">
+            <nav class="locale-bar" role="group" aria-label="语言选择">
+                <button class="locale-opt is-selected" data-locale="zh-CN">中文</button>
+                <button class="locale-opt" data-locale="en-US">English</button>
+            </nav>
+        </div>
+    </article>
+</main>
+
+<script>
+    (function() {
+        var _localeStore = {
+            "zh-CN": {
+                title: "LingConsole 程序运行中",
+                p1: "此端口上正在运行 LingConsole 的 守护程序，正常情况下，你不应该直接访问！",
+                p2: "",
+                refCap: "帮助文档",
+                docTitle: "LingConsole 守护程序"
+            },
+            "en-US": {
+                title: "LingConsole is Running",
+                p1: "The LingConsole daemon is running on this port. Under normal circumstances, you should not access it directly!",
+                p2: "",
+                refCap: "Documentation",
+                docTitle: "LingConsole Daemon"
+            }
+        };
+
+        var _storageKey = 'app-locale-pref';
+        var _titleEl = document.getElementById('main-title');
+        var _p1El = document.getElementById('para-1');
+        var _p2El = document.getElementById('para-2');
+        var _refCapEl = document.getElementById('ref-caption');
+        var _btnList = document.querySelectorAll('.locale-opt');
+
+        function _detectBrowserLocale() {
+            var raw = navigator.language || navigator.userLanguage || 'en-US';
+            if (raw.slice(0, 2) === 'zh') return 'zh-CN';
+            return 'en-US';
+        }
+
+        function _applyLocale(code) {
+            var pack = _localeStore[code];
+            if (!pack) return;
+            if (_titleEl) _titleEl.textContent = pack.title;
+            if (_p1El) _p1El.textContent = pack.p1;
+            if (_p2El) _p2El.textContent = pack.p2;
+            if (_refCapEl) _refCapEl.textContent = pack.refCap;
+            if (pack.docTitle) document.title = pack.docTitle;
+
+            _btnList.forEach(function(btn) {
+                var localeVal = btn.getAttribute('data-locale');
+                if (localeVal === code) {
+                    btn.classList.add('is-selected');
+                } else {
+                    btn.classList.remove('is-selected');
+                }
+            });
+
+            try {
+                localStorage.setItem(_storageKey, code);
+            } catch (e) {}
+        }
+
+        function _onDomReady() {
+            var saved;
+            try {
+                saved = localStorage.getItem(_storageKey);
+            } catch (e) {
+                saved = null;
+            }
+            var initialLocale = saved || _detectBrowserLocale();
+            _applyLocale(initialLocale);
+
+            _btnList.forEach(function(btn) {
+                btn.addEventListener('click', function() {
+                    var chosen = this.getAttribute('data-locale');
+                    if (chosen) {
+                        _applyLocale(chosen);
+                    }
+                });
+            });
+        }
+
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', _onDomReady);
+        } else {
+            _onDomReady();
+        }
+    })();
+</script>
+</body>
+</html>

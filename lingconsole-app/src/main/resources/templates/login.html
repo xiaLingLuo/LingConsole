@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head th:replace="~{layout :: head('登录')}"></head>
+<body class="lc-login-body">
+
+<div class="lc-login-card">
+    <div class="lc-login-card__logo">
+        <span class="lc-sidebar__logo-dot"></span>
+        <span class="lc-sidebar__logo-text">Ling<em>Console</em></span>
+    </div>
+    <h1 class="lc-login-card__title">欢迎回来</h1>
+    <p class="lc-login-card__subtitle">泠 控制台</p>
+
+    <form class="lc-form" id="login-form">
+        <div class="lc-form__group">
+            <label class="lc-form__label">账号</label>
+            <input class="lc-input" type="text" id="login-username" placeholder="请输入账号" autocomplete="username" required>
+        </div>
+        <div class="lc-form__group">
+            <label class="lc-form__label">密码</label>
+            <input class="lc-input" type="password" id="login-password" placeholder="请输入密码" autocomplete="current-password" required>
+        </div>
+        <div class="lc-form__error" id="login-error"></div>
+        <button class="lc-btn lc-btn--primary lc-btn--block" type="submit" id="login-btn">登 录</button>
+    </form>
+</div>
+
+<th:block th:replace="~{layout :: footerScripts}"></th:block>
+<script src="/static/js/pages/page-login.js"></script>
+</body>
+</html>

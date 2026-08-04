@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head th:fragment="head(title)">
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title th:text="${title} + ' - LingConsole'">LingConsole</title>
+    <link rel="stylesheet" href="/static/css/ling-console.css">
+</head>
+<body>
+
+
+<aside class="lc-sidebar" th:fragment="sidebar(active)">
+    <div class="lc-sidebar__logo">
+        <span class="lc-sidebar__logo-dot"></span>
+        <span class="lc-sidebar__logo-text">Ling<em>Console</em></span>
+    </div>
+    <nav class="lc-sidebar__menu">
+        <a class="lc-sidebar__menu-item"
+           th:classappend="${active == 'dashboard'} ? 'is-active' : ''" href="/dashboard">
+            <span class="lc-sidebar__menu-icon">◉</span> 仪表盘
+        </a>
+        <a class="lc-sidebar__menu-item"
+           th:classappend="${active == 'nodes'} ? 'is-active' : ''" href="/nodes">
+            <span class="lc-sidebar__menu-icon">⬢</span> 节点管理
+        </a>
+        <a class="lc-sidebar__menu-item"
+           th:classappend="${active == 'apps'} ? 'is-active' : ''" href="/apps">
+            <span class="lc-sidebar__menu-icon">▤</span> 应用管理
+        </a>
+        <a class="lc-sidebar__menu-item"
+           th:classappend="${active == 'monitor'} ? 'is-active' : ''" href="/monitor">
+            <span class="lc-sidebar__menu-icon">◔</span> 系统监控
+        </a>
+        <a class="lc-sidebar__menu-item" id="menu-packages"
+           th:classappend="${active == 'packages'} ? 'is-active' : ''" href="/packages" style="display:none">
+            <span class="lc-sidebar__menu-icon">⬓</span> 包管理器
+        </a>
+        <a class="lc-sidebar__menu-item" id="menu-user-manage"
+           th:classappend="${active == 'users'} ? 'is-active' : ''" href="/users" style="display:none">
+            <span class="lc-sidebar__menu-icon">♟</span> 用户管理
+        </a>
+        <a class="lc-sidebar__menu-item" id="menu-perm-groups"
+           th:classappend="${active == 'permission-groups'} ? 'is-active' : ''" href="/permission-groups" style="display:none">
+            <span class="lc-sidebar__menu-icon">♛</span> 权限组管理
+        </a>
+        <a class="lc-sidebar__menu-item" id="menu-addons"
+           th:classappend="${active == 'addons'} ? 'is-active' : ''" href="/addons" style="display:none">
+            <span class="lc-sidebar__menu-icon">▦</span> 插件
+        </a>
+        <a class="lc-sidebar__menu-item"
+           th:classappend="${active == 'logs'} ? 'is-active' : ''" href="/logs">
+            <span class="lc-sidebar__menu-icon">≣</span> 操作日志
+        </a>
+        <a class="lc-sidebar__menu-item"
+           th:classappend="${active == 'settings'} ? 'is-active' : ''" href="/settings">
+            <span class="lc-sidebar__menu-icon">⚙</span> 系统设置
+        </a>
+    </nav>
+    <div class="lc-sidebar__footer">
+        <div class="lc-sidebar__node" id="sidebar-node" title="当前节点" onclick="window.location.href='/nodes'">当前节点: --</div>
+        <div class="lc-sidebar__user" id="sidebar-user">--</div>
+        <button class="lc-btn lc-btn--ghost lc-btn--sm" id="btn-logout">退出登录</button>
+    </div>
+</aside>
+
+
+<th:block th:fragment="footerScripts">
+    <script src="/static/lib/socket.io.min.js"></script>
+    <script src="/static/lib/echarts.min.js"></script>
+    <script src="/static/js/lc-dialog.js"></script>
+    <script src="/static/js/api-client.js"></script>
+    <script src="/static/js/socket-client.js"></script>
+    <script src="/static/js/app.js"></script>
+    <footer class="lc-footer">
+        <div th:text="'Copyright © ' + ${copyrightYear} + ' LingConsole. All rights reserved.'">Copyright © 2026 LingConsole. All rights reserved.</div>
+        <div>Licensed under the GNU Affero General Public License v3.0 (AGPL-3.0).</div>
+    </footer>
+</th:block>
+
+</body>
+</html>

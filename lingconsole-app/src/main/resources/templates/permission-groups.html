@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head th:replace="~{layout :: head('权限组管理')}"></head>
+<body>
+
+<th:block th:replace="~{layout :: sidebar('permission-groups')}"></th:block>
+
+<main class="lc-main">
+    <header class="lc-header">
+        <h1 class="lc-header__title">权限组管理</h1>
+        <div class="lc-header__actions"></div>
+    </header>
+
+    <section class="lc-content">
+        <div class="lc-pg-grid">
+            <div class="lc-card">
+                <div class="lc-card__header">
+                    <h2 class="lc-card__title">权限树预览</h2>
+                    <span class="lc-card__hint">可以点击操作哦~</span>
+                </div>
+                <div class="lc-card__body">
+                    <div class="lc-pg-tree-wrap">
+                        <div id="perm-tree" class="lc-pg-tree"><div class="lc-config-note">加载中...</div></div>
+                        <div class="lc-pg-tree-detail">
+                            <div class="lc-pg-detail-label">完整权限节点</div>
+                            <input class="lc-pg-detail-input" id="perm-detail" readonly placeholder="点击左侧节点查看">
+                            <button class="lc-btn lc-btn--sm" id="btn-copy-perm">复制</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="lc-card">
+                <div class="lc-card__header">
+                    <h2 class="lc-card__title">权限组编辑器</h2>
+                </div>
+                <div class="lc-card__body">
+                    <div id="group-list" class="lc-pg-groups"><div class="lc-config-note">加载中...</div></div>
+
+                    <div id="group-editor" class="lc-pg-editor" style="display:none">
+                        <div class="lc-form__group">
+                            <label class="lc-form__label">权限组 ID (仅小写英文字母)</label>
+                            <input class="lc-input" type="text" id="pg-groupid" placeholder="如: ops">
+                        </div>
+                        <div class="lc-form__group">
+                            <label class="lc-form__label">名称 (可中文)</label>
+                            <input class="lc-input" type="text" id="pg-name" placeholder="如: 运维权限">
+                        </div>
+                        <div class="lc-form__group">
+                            <label class="lc-form__label">描述</label>
+                            <input class="lc-input" type="text" id="pg-desc" placeholder="描述 (可选)">
+                        </div>
+                        <div class="lc-form__group">
+                            <label class="lc-form__label">权限节点 (支持 * 通配，Tab补全)</label>
+                            <div class="lc-perm-tags" id="pg-tags"></div>
+                            <div class="lc-ac-wrap">
+                                <div class="lc-ac-dropdown" id="pg-ac" style="display:none"></div>
+                            </div>
+                        </div>
+                        <div class="lc-form__error" id="pg-error"></div>
+                        <div class="lc-pg-editor-actions">
+                            <button class="lc-btn" id="btn-cancel-pg">取消</button>
+                            <button class="lc-btn lc-btn--primary" id="btn-save-pg">保存</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+</main>
+
+<th:block th:replace="~{layout :: footerScripts}"></th:block>
+<script src="/static/js/pages/page-permission-groups.js"></script>
+</body>
+</html>

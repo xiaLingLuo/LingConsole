@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head th:replace="~{layout :: head('插件管理')}"></head>
+<body>
+
+<th:block th:replace="~{layout :: sidebar('addons')}"></th:block>
+
+<main class="lc-main">
+    <header class="lc-header">
+        <h1 class="lc-header__title">插件管理</h1>
+    </header>
+
+    <section class="lc-content">
+        <div class="lc-card">
+            <div class="lc-card__header">
+                <h2 class="lc-card__title">已安装插件</h2>
+            </div>
+            <div class="lc-card__body">
+                <div class="lc-config-note">插件 JAR 放入 /lingConsole/addons/ 重启后生效; 此处可修改配置并热重载。</div>
+                <div id="addon-list"></div>
+            </div>
+        </div>
+    </section>
+</main>
+
+
+<div class="lc-modal-mask" id="config-modal" style="display:none">
+    <div class="lc-modal lc-modal--lg">
+        <div class="lc-modal__header">
+            <h2 class="lc-modal__title" id="config-modal-title">插件配置</h2>
+            <button class="lc-modal__close" id="btn-close-config-modal">×</button>
+        </div>
+        <div class="lc-modal__body">
+            <div id="config-form"></div>
+            <div class="lc-form__error" id="config-error"></div>
+        </div>
+        <div class="lc-modal__footer">
+            <button class="lc-btn" id="btn-cancel-config-modal">取消</button>
+            <button class="lc-btn lc-btn--primary" id="btn-save-config">保存并热重载</button>
+        </div>
+    </div>
+</div>
+
+<th:block th:replace="~{layout :: footerScripts}"></th:block>
+<script src="/static/js/pages/page-addons.js"></script>
+</body>
+</html>

@@ -1,0 +1,10 @@
+name = "exampleaddon"
+version = "1.1.86"
+main = "im.xz.cn.example.addon.ExampleAddon"
+author = "xiaLingLuo"
+description = "LingConsole 示例插件"
+api-version = "1.1.86"
+# 硬依赖
+# dependencies = ["other-addon"]
+# 软依赖
+soft-dependencies = ["optional-helper"]
