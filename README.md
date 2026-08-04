@@ -59,12 +59,12 @@ end  # 优雅关闭程序
 
 | 文档                            | 说明                                  |
 |---------------------------------|---------------------------------------|
-| [📘 API 文档](addon)            | 插件开发 API 完整参考                 |
-| [📗 插件开发教程](plugin-guide) | 从零写插件的完整步骤                  |
-| [安装部署](install)             | 一键/手动安装、启动参数、数据目录     |
-| [WebUI 使用指南](usage)         | 面板各功能使用说明                    |
-| [架构与安全](architecture)      | 架构设计、安全模型、端口              |
-| [控制台指令](commands)          | 指令系统（`lingconsole:` / 插件指令） |
+| [📘 API 文档](docs/addon.md)            | 插件开发 API 完整参考                 |
+| [📗 插件开发教程](docs/plugin-guide.md) | 从零写插件的完整步骤                  |
+| [安装部署](docs/install.md)             | 一键/手动安装、启动参数、数据目录     |
+| [WebUI 使用指南](docs/usage.md)         | 面板各功能使用说明                    |
+| [架构与安全](docs/architecture.md)      | 架构设计、安全模型、端口              |
+| [控制台指令](docs/commands.md)          | 指令系统（`lingconsole:` / 插件指令） |
 
 ---
 
