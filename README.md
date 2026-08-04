@@ -27,7 +27,7 @@ LingConsole 将多台服务器的守护进程（Daemon）统一接入一个 Web 
 ## 🚀 一键安装 (Linux)
 
 ```bash
-sudo su -c "wget -qO- https://raw.githubusercontent.com/xiaLingLuo/LingConsole/refs/heads/main/installer/install.sh | bash"
+sudo su -c "wget -qO- https://raw.githubusercontent.com/xiaLingLuo/LingConsole/refs/heads/master/installer/install.sh | bash"
 ```
 
 脚本自动装 Java 25，部署，并注册系统命令 `lingconsole start|end`。

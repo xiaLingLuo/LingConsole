@@ -5,7 +5,7 @@
 ## 一键安装 (Linux)
 
 ```bash
-sudo su -c "wget -qO- https://raw.githubusercontent.com/xiaLingLuo/LingConsole/refs/heads/main/installer/install.sh | bash"
+sudo su -c "wget -qO- https://raw.githubusercontent.com/xiaLingLuo/LingConsole/refs/heads/master/installer/install.sh | bash"
 ```
 
 `install.sh` 会：
