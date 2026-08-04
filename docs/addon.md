@@ -2,8 +2,8 @@
 
 本页是插件开发 API 的完整参考。
 
-- [插件开发教程](plugin-guide) — 从零写一个插件的完整步骤
-- [控制台指令](commands) · [WebUI 使用](usage) · [安装部署](install)
+- [插件开发教程](docs/plugin-guide.md) — 从零写一个插件的完整步骤
+- [控制台指令](docs/commands.md) · [WebUI 使用](docs/usage.md) · [安装部署](docs/install.md)
 
 ---
 
