@@ -34,9 +34,9 @@ if [ "$(id -u)" != "0" ]; then
 fi
 
 JAR_URL="https://github.com/xiaLingLuo/LingConsole/releases/download/1.1.86/LingConsole.jar"
-START_SCRIPT_URL="https://github.com/xiaLingLuo/LingConsole/refs/heads/master/start/start.sh"
-CONFIG_URL="https://github.com/xiaLingLuo/LingConsole/refs/heads/master/start/config.txt"
-VERSION_URL="https://github.com/xiaLingLuo/LingConsole/refs/heads/master/lastver.txt"
+START_SCRIPT_URL="https://raw.githubusercontent.com/xiaLingLuo/LingConsole/refs/heads/master/start/start.sh"
+CONFIG_URL="https://raw.githubusercontent.com/xiaLingLuo/LingConsole/refs/heads/master/start/config.txt"
+VERSION_URL="https://raw.githubusercontent.com/xiaLingLuo/LingConsole/refs/heads/master/lastver.txt"
 
 
 JAR_SHA256=""
