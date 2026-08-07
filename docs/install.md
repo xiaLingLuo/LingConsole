@@ -9,7 +9,7 @@
 ## Linux 一键安装
 
 ```bash
-sudo su -c "wget -qO- https://lingconsole.xzrui.cn/install.sh | bash"
+sudo su -c "wget -qO- https://raw.githubusercontent.com/xiaLingLuo/LingConsole/refs/heads/master/installer/install.sh | bash"
 ```
 
 安装器会将程序部署到 `/opt/lingConsole`，数据放在 `/lingConsole`，按需从 Adoptium 获取 JDK 25，注册 `lingconsole` 命令，并优先创建 systemd 服务。

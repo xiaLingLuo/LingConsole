@@ -22,7 +22,7 @@ LingConsole 是基于 Java 25 的服务器 Web 管理系统。一个 Panel 可�
 运行环境为 Java 25。Linux 一键安装：
 
 ```bash
-sudo su -c "wget -qO- https://lingconsole.xzrui.cn/install.sh | bash"
+sudo su -c "wget -qO- https://raw.githubusercontent.com/xiaLingLuo/LingConsole/refs/heads/master/installer/install.sh | bash"
 ```
 
 手动启动：
