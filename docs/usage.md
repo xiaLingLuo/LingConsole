@@ -50,4 +50,3 @@
 ## 插件
 
 拥有 `lingconsole.permission.assign` 的用户可查看插件状态、修改插件配置和执行热重载。插件代码在宿主进程内运行，必须视为受信任代码。插件接口见 [插件 API](addon.md)。
->>>>>>> f106eef (upload)
