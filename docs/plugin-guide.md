@@ -1,6 +1,6 @@
 # 插件开发教程
 
-本教程面向 LingConsole 1.2.8。可运行参考位于仓库 `exampleAddon/`。
+本教程面向 LingConsole 1.2.9。可运行参考位于仓库 `exampleAddon/`。
 
 ## 1. 准备
 
@@ -29,7 +29,7 @@ version = "1.0.0"
 main = "com.example.MyAddon"
 author = "You"
 description = "My first addon"
-api-version = "1.2.8"
+api-version = "1.2.9"
 ```
 
 ## 3. 主类

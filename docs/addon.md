@@ -1,4 +1,4 @@
-# 插件 API 1.2.8
+# 插件 API 1.2.9
 
 插件 API 由 `lingconsole-api.jar` 提供。插件在 LingConsole JVM 内运行，安装插件即代表你信任插件代码。
 
@@ -8,11 +8,11 @@ JAR 根目录必须包含 `addon.toml`：
 
 ```toml
 name = "myaddon"
-version = "1.2.8"
+version = "1.2.9"
 main = "com.example.MyAddon"
 author = "Example"
 description = "Example addon"
-api-version = "1.2.8"
+api-version = "1.2.9"
 dependencies = ["required-addon"]
 soft-dependencies = ["optional-addon"]
 ```

@@ -1,4 +1,4 @@
-# LingConsole 1.2.8 文档
+# LingConsole 1.2.9 文档
 
 LingConsole 由 Panel、Daemon、共享组件和插件 API 组成。默认单个 JAR 同时启动 Panel 与本地 Daemon，也可以拆分部署，由一个 Panel 管理多个远端 Daemon，通过AGPL-3.0进行开源。
 

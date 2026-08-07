@@ -1,4 +1,4 @@
-# LingConsole 1.2.8
+# LingConsole 1.2.9
 
 ![java](https://img.shields.io/badge/Java-25-ED8B00)
 ![license](https://img.shields.io/badge/License-AGPL--3.0-blue)
