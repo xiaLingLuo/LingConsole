@@ -19,10 +19,7 @@ package im.xz.cn.lingconsole.addon;
 
 
 public interface AddonSocketConnection {
-
     String sessionId();
-
     void emit(String event, Object data);
-
     void close();
 }

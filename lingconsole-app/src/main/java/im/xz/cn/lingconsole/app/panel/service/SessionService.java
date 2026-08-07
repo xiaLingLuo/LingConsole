@@ -23,16 +23,40 @@ import im.xz.cn.lingconsole.app.panel.repository.SessionRepository;
 import im.xz.cn.lingconsole.common.util.IdUtil;
 
 import java.util.Optional;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.TimeUnit;
 
 
 public class SessionService {
 
+    public interface RevocationListener {
+        void tokenRevoked(String token);
+        void userRevoked(String userId);
+    }
+
     private final SessionRepository sessionRepository;
     private final UserService userService;
+    private final ScheduledExecutorService cleanupScheduler =
+            Executors.newSingleThreadScheduledExecutor(r -> {
+                Thread t = new Thread(r, "session-cleanup");
+                t.setDaemon(true);
+                return t;
+            });
+    private volatile RevocationListener revocationListener;
 
     public SessionService(SessionRepository sessionRepository, UserService userService) {
         this.sessionRepository = sessionRepository;
         this.userService = userService;
+        cleanupScheduler.scheduleAtFixedRate(sessionRepository::cleanupExpired, 5, 5, TimeUnit.MINUTES);
+    }
+
+    public void shutdown() {
+        cleanupScheduler.shutdownNow();
+    }
+
+    public void setRevocationListener(RevocationListener revocationListener) {
+        this.revocationListener = revocationListener;
     }
 
     
@@ -54,7 +78,6 @@ public class SessionService {
         if (token == null || token.isBlank()) {
             return null;
         }
-        sessionRepository.cleanupExpired();
         Optional<Session> session = sessionRepository.findByToken(token);
         if (session.isEmpty()) {
             return null;
@@ -63,12 +86,19 @@ public class SessionService {
             sessionRepository.deleteByToken(token);
             return null;
         }
-        return userService.findById(session.get().getUserId());
+        User user = userService.findById(session.get().getUserId());
+        if (user == null || userService.isBanned(user)) {
+            sessionRepository.deleteByToken(token);
+            return null;
+        }
+        return user;
     }
 
     public void logout(String token) {
         if (token != null) {
             sessionRepository.deleteByToken(token);
+            RevocationListener listener = revocationListener;
+            if (listener != null) listener.tokenRevoked(token);
         }
     }
 
@@ -76,6 +106,8 @@ public class SessionService {
     public void logoutAllForUser(String userId) {
         if (userId != null) {
             sessionRepository.deleteByUserId(userId);
+            RevocationListener listener = revocationListener;
+            if (listener != null) listener.userRevoked(userId);
         }
     }
 }

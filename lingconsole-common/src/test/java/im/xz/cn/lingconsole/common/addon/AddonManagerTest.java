@@ -149,6 +149,37 @@ class AddonManagerTest {
     }
 
     @Test
+    void reloadFailsClosedWhenCleanupFails() throws Exception {
+        Path addonsDir = dataDir.resolve("addons-reload-cleanup");
+        Files.createDirectories(addonsDir);
+        buildAddon(addonsDir, "base", "testaddon.TestAddon", TEST_ADDON_SOURCE, List.of());
+        AddonManager manager = new AddonManager(addonsDir);
+        manager.loadAll((info, logger) -> stubContext(info, dataDir));
+        manager.enableAll();
+        manager.setOnReloadStart(name -> { throw new IllegalStateException("cleanup failed"); });
+
+        assertFalse(manager.reload("base"));
+        assertEquals(AddonState.ERROR, manager.byName("base").state());
+        assertTrue(manager.byName("base").error().contains("cleanup failed"));
+    }
+
+    @Test
+    void disableInvokesResourceCleanupForEveryLoadedAddon() throws Exception {
+        Path addonsDir = dataDir.resolve("addons-disable-cleanup");
+        Files.createDirectories(addonsDir);
+        buildAddon(addonsDir, "base", "testaddon.TestAddon", TEST_ADDON_SOURCE, List.of());
+        AddonManager manager = new AddonManager(addonsDir);
+        manager.loadAll((info, logger) -> stubContext(info, dataDir));
+        manager.enableAll();
+        List<String> cleaned = new ArrayList<>();
+        manager.setOnDisable(cleaned::add);
+
+        manager.disableAll();
+
+        assertEquals(List.of("base"), cleaned);
+    }
+
+    @Test
     void softDependencyMissingDoesNotSkip() throws Exception {
         Path addonsDir = dataDir.resolve("addons2");
         Files.createDirectories(addonsDir);
@@ -207,12 +238,15 @@ class AddonManagerTest {
                                                      String perm) { }
             @Override public void registerDaemonRoute(im.xz.cn.lingconsole.addon.AddonRouteMethod m, String p,
                                                       im.xz.cn.lingconsole.addon.AddonRouteHandler h) { }
-            @Override public void registerSocketEvent(String ns, String e, AddonSocketHandler h) { }
+            @Override public void registerSocketEvent(String ns, String e, String permission,
+                                                      AddonSocketHandler h) { }
             @Override public void registerPanelMenu(String label, String url) { }
             @Override public void registerCommand(String command, CommandHandler handler) { }
             @Override public void registerPermission(String key, String label) { }
             @Override public void registerPanelProxy(String m, String s, String h, int p, String b,
                                                      String perm) { }
+            @Override public void registerPanelProxy(String m, String s, String h, int p, String b,
+                                                     String perm, java.util.Set<String> fwd) { }
             @Override public ScheduledExecutorService scheduler() { return null; }
             @Override public Path dataDir() { return dataDir; }
             @Override public Path addonDataDir() {

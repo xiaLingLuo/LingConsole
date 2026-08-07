@@ -21,5 +21,5 @@ package im.xz.cn.lingconsole.common.socketio;
 @FunctionalInterface
 public interface SocketIOConnectHandler {
 
-    void onConnect(SocketIOConnection connection, String query);
+    SocketIOConnectResult onConnect(SocketIOConnection connection, String query);
 }

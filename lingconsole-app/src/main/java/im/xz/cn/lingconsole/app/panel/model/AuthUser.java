@@ -36,6 +36,21 @@ public record AuthUser(User user, Set<String> permissions) {
     }
 
     public boolean hasPermission(String key) {
+        if (key == null) {
+            return false;
+        }
+        if (matchesAny(key)) {
+            return true;
+        }
+        if (key.startsWith("lingconsole.app.read.")) {
+            String scope = key.substring("lingconsole.app.read.".length());
+            return matchesAny("lingconsole.app.write." + scope)
+                    || matchesAny("lingconsole.app.advanced." + scope);
+        }
+        return false;
+    }
+
+    private boolean matchesAny(String key) {
         for (String p : permissions) {
             if (PermissionMatcher.matches(p, key)) {
                 return true;

@@ -94,11 +94,11 @@
         const currentBtn = isCurrent
             ? '<button class="lc-btn lc-btn--sm lc-btn--primary" disabled>✓ 当前节点</button> '
             : '<button class="lc-btn lc-btn--sm lc-btn--primary" data-action="set-current" data-id="' + escapeAttr(node.id) + '">设为当前</button> ';
-        const terminalBtn = window.app.hasPermission("lingconsole.terminal.node")
+        const terminalBtn = window.app.hasPermission("lingconsole.terminal.node." + node.id)
             ? '<a class="lc-btn lc-btn--sm" href="/terminal/' + escapeAttr(node.id) + '">终端</a> ' : '';
-        const fileBtn = window.app.hasPermission("lingconsole.file.node")
+        const fileBtn = window.app.hasPermission("lingconsole.file.node." + node.id)
             ? '<a class="lc-btn lc-btn--sm" href="/files/' + escapeAttr(node.id) + '">文件管理</a> ' : '';
-        const writeBtn = window.app.hasPermission("lingconsole.node.write")
+        const writeBtn = window.app.hasPermission("lingconsole.node.write." + node.id)
             ? '<button class="lc-btn lc-btn--sm" data-action="connect" data-id="' + escapeAttr(node.id) + '">测试</button> ' +
               '<button class="lc-btn lc-btn--sm" data-action="config" data-id="' + escapeAttr(node.id) + '">配置</button> ' +
               '<button class="lc-btn lc-btn--sm" data-action="style" data-id="' + escapeAttr(node.id) + '" data-name="' + escapeAttr(node.name) + '" data-style="' + escapeAttr(node.style || "auto") + '">系统偏好</button> ' +
@@ -352,7 +352,10 @@
     document.getElementById("btn-confirm-style").addEventListener("click", doSaveStyle);
 
     const addBtn = document.getElementById("btn-add-node");
-    if (addBtn) addBtn.addEventListener("click", openModal);
+    if (addBtn) {
+        addBtn.style.display = window.app.hasPermission("lingconsole.node.write.*") ? "" : "none";
+        addBtn.addEventListener("click", openModal);
+    }
     const closeBtn = document.getElementById("btn-close-modal");
     if (closeBtn) closeBtn.addEventListener("click", closeModal);
     const cancelBtn = document.getElementById("btn-cancel-modal");

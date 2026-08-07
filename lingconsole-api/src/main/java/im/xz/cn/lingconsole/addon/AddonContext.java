@@ -16,7 +16,6 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 package im.xz.cn.lingconsole.addon;
-
 import im.xz.cn.lingconsole.addon.service.AppService;
 import im.xz.cn.lingconsole.addon.service.ConfigService;
 import im.xz.cn.lingconsole.addon.service.DataService;
@@ -30,40 +29,20 @@ import im.xz.cn.lingconsole.addon.service.UserService;
 import java.nio.file.Path;
 import java.util.concurrent.ScheduledExecutorService;
 
-
 public interface AddonContext {
-
     String PUBLIC = "*";
-
     AddonInfo info();
-
     AddonLogger logger();
-
-    
-
     NodeService nodes();
-
     AppService apps();
-
     FileService files();
-
     MonitorService monitor();
-
-    
     ExecService exec();
-
-    
     DataService data();
-
     UserService users();
-
     LogService logs();
-
     ConfigService config();
 
-    
-
-    
     default void registerPanelRoute(AddonRouteMethod method, String path, AddonRouteHandler handler) {
         registerPanelRoute(method, path, handler, null);
     }
@@ -74,53 +53,38 @@ public interface AddonContext {
 
     
     void registerDaemonRoute(AddonRouteMethod method, String path, AddonRouteHandler handler);
-
-
     void registerCommand(String command, CommandHandler handler);
-
-
     void registerPermission(String key, String label);
-
-    
-    void registerSocketEvent(String namespace, String event, AddonSocketHandler handler);
+    void registerSocketEvent(String namespace, String event, String requiredPermission,
+                             AddonSocketHandler handler);
 
     
     default void registerPanelProxy(String mountPath, String scheme, String host, int port, String basePath) {
-        registerPanelProxy(mountPath, scheme, host, port, basePath, null);
+        registerPanelProxy(mountPath, scheme, host, port, basePath, (String) null);
     }
-
     
     void registerPanelProxy(String mountPath, String scheme, String host, int port, String basePath,
                             String requiredPermission);
 
-    
+    default void registerPanelProxy(String mountPath, String scheme, String host, int port, String basePath,
+                                    java.util.Set<String> forwardHeaders) {
+        registerPanelProxy(mountPath, scheme, host, port, basePath, null, forwardHeaders);
+    }
+    void registerPanelProxy(String mountPath, String scheme, String host, int port, String basePath,
+                            String requiredPermission, java.util.Set<String> forwardHeaders);
     void registerPanelMenu(String label, String url);
-
-    
-
     
     default AddonRouteHandler panelRouteHandler(String method, String path) {
         return null;
     }
-
-    
     default String panelRoutePermission(String method, String path) {
         return null;
     }
-
-    
     default AddonRouteHandler daemonRouteHandler(String method, String path) {
         return null;
     }
 
-    
-
-    
     ScheduledExecutorService scheduler();
-
-    
     Path dataDir();
-
-    
     Path addonDataDir();
 }

@@ -50,12 +50,19 @@
                 window.app.setCurrentNode(urlNodeId);
             }
             if (selector) {
-                selector.innerHTML = nodes.map(function (n) {
-                    const selected = n.id === NODE_ID ? " selected" : "";
-                    return '<option value="' + n.id + '"' + selected + '>' + escapeHtml(n.name) + '</option>';
-                }).join("");
+                selector.replaceChildren();
+                nodes.forEach(function (n) {
+                    const option = document.createElement("option");
+                    option.value = n.id;
+                    option.textContent = n.name;
+                    option.selected = n.id === NODE_ID;
+                    selector.appendChild(option);
+                });
                 if (nodes.length === 0) {
-                    selector.innerHTML = '<option value="">无节点</option>';
+                    const option = document.createElement("option");
+                    option.value = "";
+                    option.textContent = "无节点";
+                    selector.appendChild(option);
                 }
                 selector.addEventListener("change", function () {
                     if (selector.value) {
@@ -144,9 +151,9 @@
                         const used = window.app.formatSize(d.diskInfo.used);
                         const free = window.app.formatSize(d.diskInfo.free);
                         const pct = d.diskInfo.total ? (d.diskInfo.used / d.diskInfo.total * 100).toFixed(1) : "0";
-                        return d.diskInfo.mount + "<br/>已用: " + used + " / " + total + " (" + pct + "%)<br/>剩余: " + free;
+                        return escapeHtml(d.diskInfo.mount) + "<br/>已用: " + escapeHtml(used) + " / " + escapeHtml(total) + " (" + escapeHtml(pct) + "%)<br/>剩余: " + escapeHtml(free);
                     }
-                    return params.name + "<br/>占总空间: " + params.percent + "%";
+                    return escapeHtml(params.name) + "<br/>占总空间: " + escapeHtml(params.percent) + "%";
                 }
             },
             series: [

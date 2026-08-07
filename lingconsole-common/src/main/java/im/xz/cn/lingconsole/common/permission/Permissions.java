@@ -40,14 +40,20 @@ public final class Permissions {
     public static final String LOG_READ = "lingconsole.log.read";
     public static final String PACKAGES = "lingconsole.packages.manage";
     public static final String USER_BANNED = "lingconsole.user.banned";
-    
+
     public static final String PERMISSION_ASSIGN = "lingconsole.permission.assign";
+    public static final String DASHBOARD_ADMIN = "lingconsole.dashboard.admin";
+    public static final String DASHBOARD_USER = "lingconsole.dashboard.user";
+
+    
+    public static final Set<String> ROOT_ALL = Set.of("*");
 
     
     public static final Set<String> ALL = Set.of(
             USER_MANAGE, NODE_READ, NODE_WRITE, APP_READ, APP_WRITE, APP_ADVANCED,
             FILE_NODE, FILE_APP, TERMINAL_NODE, TERMINAL_APP, MONITOR_READ,
             SYSTEM_STATUS, LOG_READ, PACKAGES, USER_BANNED, PERMISSION_ASSIGN,
+            DASHBOARD_ADMIN, DASHBOARD_USER,
             "lingconsole.node.read.*", "lingconsole.node.write.*",
             "lingconsole.app.read.*", "lingconsole.app.write.*", "lingconsole.app.advanced.*",
             "lingconsole.file.node.*", "lingconsole.file.app.*",
@@ -57,6 +63,8 @@ public final class Permissions {
     
     public static final Set<String> GRANTABLE = Set.of(
             SYSTEM_STATUS, LOG_READ, PACKAGES, USER_BANNED,
+            DASHBOARD_ADMIN, DASHBOARD_USER,
+            USER_MANAGE, PERMISSION_ASSIGN,
             "lingconsole.node.write.*", "lingconsole.app.read.*", "lingconsole.app.write.*",
             "lingconsole.app.advanced.*", "lingconsole.file.node.*", "lingconsole.file.app.*",
             "lingconsole.terminal.node.*", "lingconsole.terminal.app.*",

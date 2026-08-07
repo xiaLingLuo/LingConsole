@@ -61,14 +61,14 @@ public class NodeController {
 
     
     private void list(Context ctx) {
-        PermissionMiddleware.requirePermission(ctx, Permissions.NODE_READ);
-        List<Node> nodes = nodeService.list();
+        im.xz.cn.lingconsole.app.panel.model.AuthUser auth = AuthMiddleware.authUser(ctx);
+        List<Node> nodes = im.xz.cn.lingconsole.app.panel.service.AccessFilter.visibleNodes(auth, nodeService.list());
         ctx.json(ApiResponse.ok(nodes));
     }
 
     
     private void create(Context ctx) {
-        PermissionMiddleware.requirePermission(ctx, Permissions.NODE_WRITE);
+        PermissionMiddleware.requirePermission(ctx, "lingconsole.node.write.*");
         User user = AuthMiddleware.currentUser(ctx);
         NodeRequest req = ctx.bodyAsClass(NodeRequest.class);
         try {

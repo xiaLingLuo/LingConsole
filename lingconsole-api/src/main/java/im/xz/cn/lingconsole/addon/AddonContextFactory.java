@@ -20,6 +20,5 @@ package im.xz.cn.lingconsole.addon;
 
 @FunctionalInterface
 public interface AddonContextFactory {
-
     AddonContext create(AddonInfo info, AddonLogger logger);
 }

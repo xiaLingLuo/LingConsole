@@ -35,10 +35,6 @@ public class TerminalController {
 
     private final NodeService nodeService;
     private final TerminalTicketStore ticketStore;
-    
-    private static final int PASSPORT_MAX_PER_MINUTE = 10;
-    private final Map<String, java.util.ArrayDeque<Long>> passportAttempts = new java.util.concurrent.ConcurrentHashMap<>();
-
     public TerminalController(NodeService nodeService, TerminalTicketStore ticketStore) {
         this.nodeService = nodeService;
         this.ticketStore = ticketStore;
@@ -50,9 +46,6 @@ public class TerminalController {
 
     
     private void passport(Context ctx) {
-        if (!allowPassport(ctx.ip())) {
-            throw ApiException.badRequest("终端票据申请过于频繁, 请稍后重试");
-        }
         String nodeId = ctx.pathParam("nodeId");
         Node node = nodeService.findById(nodeId).orElse(null);
         if (node == null) {
@@ -63,8 +56,9 @@ public class TerminalController {
 
         
         if (!appId.isBlank()) {
+            im.xz.cn.lingconsole.app.panel.service.NodePermissionIndex.requireCurrentOwnership(nodeId, appId);
             PermissionMiddleware.requirePermission(ctx,
-                    "lingconsole.terminal.app." + nodeId + "." + appId);
+                    "lingconsole.terminal.app." + appId);
         } else {
             PermissionMiddleware.requirePermission(ctx, "lingconsole.terminal.node." + nodeId);
         }
@@ -75,7 +69,14 @@ public class TerminalController {
             throw ApiException.unauthorized("未登录");
         }
 
-        String ticket = ticketStore.issue(user.getId(), nodeId, appId);
+        String ticket;
+        try {
+            ticket = ticketStore.issue(user.getId(), nodeId, appId, ctx.ip());
+        } catch (TerminalTicketStore.LimitExceededException e) {
+            ctx.status(429);
+            ctx.json(im.xz.cn.lingconsole.common.model.ApiResponse.error(429, e.getMessage()));
+            return;
+        }
         ctx.json(im.xz.cn.lingconsole.common.model.ApiResponse.ok(Map.of(
                 "ticket", ticket)));
     }
@@ -85,21 +86,4 @@ public class TerminalController {
                                   @JsonProperty("rows") int rows) {
     }
 
-    
-    private boolean allowPassport(String ip) {
-        long now = System.currentTimeMillis();
-        long windowStart = now - 60_000;
-        java.util.ArrayDeque<Long> deque = passportAttempts.computeIfAbsent(
-                ip == null ? "" : ip, k -> new java.util.ArrayDeque<>());
-        synchronized (deque) {
-            while (!deque.isEmpty() && deque.peekFirst() < windowStart) {
-                deque.pollFirst();
-            }
-            if (deque.size() >= PASSPORT_MAX_PER_MINUTE) {
-                return false;
-            }
-            deque.addLast(now);
-            return true;
-        }
-    }
 }

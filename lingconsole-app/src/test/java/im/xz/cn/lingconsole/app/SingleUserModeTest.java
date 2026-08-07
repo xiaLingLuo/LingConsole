@@ -73,8 +73,8 @@ class SingleUserModeTest {
         
         User user = new User();
         user.setId(IdUtil.uuid());
-        user.setUsername("legacy-user");
-        user.setPassword(Argon2Util.hash("legacy-pass-123"));
+        user.setUsername("normal-user");
+        user.setPassword(Argon2Util.hash("normal-pass-123"));
         user.setRole(UserRole.NORMAL);
         user.setCreatedAt(System.currentTimeMillis() / 1000);
         user.setUpdatedAt(System.currentTimeMillis() / 1000);
@@ -114,6 +114,11 @@ class SingleUserModeTest {
         return http.send(builder.build(), HttpResponse.BodyHandlers.ofString());
     }
 
+    private String token(HttpResponse<String> response) {
+        String cookie = response.headers().firstValue("Set-Cookie").orElseThrow().split(";", 2)[0];
+        return cookie.substring("ling_session=".length());
+    }
+
     @Test
     void rootLoginWorks() throws Exception {
         HttpResponse<String> resp = login("ling", rootPw);
@@ -121,15 +126,14 @@ class SingleUserModeTest {
     }
 
     @Test
-    void legacyUserCannotLoginInSingleUserMode() throws Exception {
-        HttpResponse<String> resp = login("legacy-user", "legacy-pass-123");
+    void normalUserCannotLoginInSingleUserMode() throws Exception {
+        HttpResponse<String> resp = login("normal-user", "normal-pass-123");
         assertEquals(401, resp.statusCode());
     }
 
     @Test
     void userManagementApiDisabled() throws Exception {
-        String token = login("ling", rootPw).body();
-        String t = MAPPER.readTree(token).path("data").path("token").asText();
+        String t = token(login("ling", rootPw));
         HttpResponse<String> users = apiGet("/api/users", t);
         assertEquals(404, users.statusCode());
         HttpResponse<String> groups = apiGet("/api/permission-groups", t);
@@ -153,8 +157,7 @@ class SingleUserModeTest {
 
     @Test
     void meReportsSingleUserMode() throws Exception {
-        String token = login("ling", rootPw).body();
-        String t = MAPPER.readTree(token).path("data").path("token").asText();
+        String t = token(login("ling", rootPw));
         JsonNode data = MAPPER.readTree(apiGet("/api/auth/me", t).body()).path("data");
         assertTrue(data.path("singleUserMode").asBoolean());
     }

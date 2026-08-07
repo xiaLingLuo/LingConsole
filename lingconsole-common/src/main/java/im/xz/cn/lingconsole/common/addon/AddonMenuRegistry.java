@@ -22,9 +22,6 @@ import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
 
-/**
- * 插件侧栏菜单注册表 (按插件分组, 支持热重载清理)。
- */
 public final class AddonMenuRegistry {
 
     private final Map<String, List<AddonMenu>> byAddon = new ConcurrentHashMap<>();

@@ -29,10 +29,17 @@ import im.xz.cn.lingconsole.common.util.IdUtil;
 
 public class UserService {
 
+    private static final String DUMMY_PASSWORD_HASH =
+            "argon2id$v=19$m=65536,t=3,p=4$00112233445566778899aabbccddeeff$"
+                    + "0000000000000000000000000000000000000000000000000000000000000000";
+
     private final UserRepository userRepository;
     private final RootAccountRepository rootAccountRepository;
     private volatile boolean singleUserMode;
     private volatile PermissionService permissionService;
+    private volatile java.util.concurrent.Semaphore passwordVerificationPermits =
+            new java.util.concurrent.Semaphore(2, true);
+    private volatile long passwordVerificationTimeoutMillis = 250;
 
     public UserService(UserRepository userRepository, RootAccountRepository rootAccountRepository) {
         this.userRepository = userRepository;
@@ -45,6 +52,11 @@ public class UserService {
 
     public void setSingleUserMode(boolean singleUserMode) {
         this.singleUserMode = singleUserMode;
+    }
+
+    public void configurePasswordVerification(int concurrency, long timeoutMillis) {
+        passwordVerificationPermits = new java.util.concurrent.Semaphore(Math.max(1, concurrency), true);
+        passwordVerificationTimeoutMillis = Math.max(1, timeoutMillis);
     }
     public boolean isSingleUserMode() {
         return singleUserMode;
@@ -76,32 +88,58 @@ public class UserService {
     }
 
     public User login(String username, String password) {
-        if (singleUserMode && !isRootUsername(username)) {
-            return null;
-        }
+        String encoded = DUMMY_PASSWORD_HASH;
+        User candidate = null;
         if (isRootUsername(username)) {
             RootAccount root = rootAccountRepository.findRoot().orElse(null);
-            if (root != null && Argon2Util.verify(password, root.getPassword())) {
-                return rootUser();
+            if (root != null) {
+                encoded = root.getPassword();
+                candidate = rootUser();
             }
-            return null;
+        } else if (!singleUserMode) {
+            candidate = userRepository.findByUsername(username).orElse(null);
+            if (candidate != null) {
+                encoded = candidate.getPassword();
+            }
         }
-        return userRepository.findByUsername(username)
-                .filter(u -> Argon2Util.verify(password, u.getPassword()))
-                .filter(u -> !isBanned(u))
-                .orElse(null);
+        boolean verified = verifyPassword(password, encoded);
+        return verified && candidate != null && (candidate.getRole() == UserRole.ROOT || !isBanned(candidate))
+                ? candidate : null;
+    }
+
+    private boolean verifyPassword(String password, String encoded) {
+        java.util.concurrent.Semaphore permits = passwordVerificationPermits;
+        boolean acquired = false;
+        try {
+            acquired = permits.tryAcquire(passwordVerificationTimeoutMillis,
+                    java.util.concurrent.TimeUnit.MILLISECONDS);
+            if (!acquired) {
+                throw new PasswordVerificationBusyException();
+            }
+            return Argon2Util.verify(password, encoded);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new PasswordVerificationBusyException();
+        } finally {
+            if (acquired) {
+                permits.release();
+            }
+        }
+    }
+
+    public static final class PasswordVerificationBusyException extends RuntimeException {
     }
 
     
-    private boolean isBanned(User user) {
+    public boolean isBanned(User user) {
         if (permissionService == null) {
-            return false;
+            return true;
         }
         try {
             return permissionService.permissionsOf(user.getId())
                     .contains(im.xz.cn.lingconsole.common.permission.Permissions.USER_BANNED);
         } catch (Exception e) {
-            return false;
+            return true;
         }
     }
 
@@ -125,8 +163,13 @@ public class UserService {
     }
 
     public boolean changeRootPassword(String oldPassword, String newPassword) {
+        String err = im.xz.cn.lingconsole.common.util.PasswordPolicy.validate(
+                newPassword, oldPassword, Constants.DEFAULT_USERNAME);
+        if (err != null) {
+            throw new IllegalArgumentException(err);
+        }
         RootAccount root = rootAccountRepository.findRoot().orElse(null);
-        if (root == null || !Argon2Util.verify(oldPassword, root.getPassword())) {
+        if (root == null || !verifyPassword(oldPassword, root.getPassword())) {
             return false;
         }
         rootAccountRepository.updatePassword(Argon2Util.hash(newPassword));
@@ -138,7 +181,12 @@ public class UserService {
         if (user == null) {
             return false;
         }
-        if (!Argon2Util.verify(oldPassword, user.getPassword())) {
+        String err = im.xz.cn.lingconsole.common.util.PasswordPolicy.validate(
+                newPassword, oldPassword, user.getUsername());
+        if (err != null) {
+            throw new IllegalArgumentException(err);
+        }
+        if (!verifyPassword(oldPassword, user.getPassword())) {
             return false;
         }
         userRepository.updatePassword(userId, Argon2Util.hash(newPassword));
@@ -184,6 +232,11 @@ public class UserService {
         if (userRepository.findByUsername(username).isPresent()) {
             throw new IllegalArgumentException("用户名已存在: " + username);
         }
+        String err = im.xz.cn.lingconsole.common.util.PasswordPolicy.validate(
+                password, null, username == null ? null : username.trim());
+        if (err != null) {
+            throw new IllegalArgumentException(err);
+        }
         long now = System.currentTimeMillis() / 1000;
         User user = new User();
         user.setId(IdUtil.uuid());
@@ -208,6 +261,11 @@ public class UserService {
             user.setUsername(username);
         }
         if (password != null && !password.isBlank()) {
+            String err = im.xz.cn.lingconsole.common.util.PasswordPolicy.validate(
+                    password, null, username == null ? user.getUsername() : username);
+            if (err != null) {
+                throw new IllegalArgumentException(err);
+            }
             user.setPassword(Argon2Util.hash(password));
         }
         user.setUpdatedAt(System.currentTimeMillis() / 1000);

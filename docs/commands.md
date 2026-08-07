@@ -1,57 +1,30 @@
-# 控制台指令
+# 控制台命令
 
-> 可在启动 jar 的窗口中直接输入指令
+运行 JAR 的标准输入支持以下格式：
 
-## 格式
-
-```
-[命名空间:]指令 [参数...]
+```text
+[namespace:]command [arguments...]
 ```
 
-- **命名空间前缀可选**：直接输入 `addons` 等价于 `lingconsole:addons`
-- 原生指令前缀：`lingconsole:`
-- 插件指令前缀：`<插件名>:`
+省略命名空间时使用 `lingconsole`。因此 `addons` 等价于 `lingconsole:addons`。
 
-## 内置指令
+## 内置命令
 
-### `addons` — 列出已安装插件
+| 命令 | 说明 |
+|---|---|
+| `addons` | 列出插件及 `[OK]`/`[ERR]` 状态 |
+| `end` | 触发 JVM 关闭流程 |
+| `stop` | `end` 的别名 |
 
-```
-[09:58:09 INFO]: Console Addons (3):
-[09:58:09 INFO]:  - ExampleAddon[OK], JustIt[OK], TestError[ERR]
-```
+关闭流程会停用插件、停止 Panel/Daemon、关闭数据库和调度器。服务方式运行时也可使用 systemd 或启动脚本停止程序。
 
-- `[OK]`：插件加载/启用正常
-- `[ERR]`：插件加载/启用失败，或**命名空间冲突**（同名插件双方均标记 `[ERR]`）
+## 插件命令
 
-### `end` / `stop` — 关闭程序
-
-```
-end          # 等价 lingconsole:end
-stop         # 等价 lingconsole:stop
-```
-
-输出 `正在关闭 LingConsole ...` 后触发完整关闭流程（停用插件、停止 Panel/Daemon、关闭数据库）。
-
-## 插件注册指令
-
-插件通过 `AddonContext.registerCommand(name, handler)` 注册，自动挂到 `<插件名>:` 命名空间：
+插件使用 `registerCommand` 注册在自身名称空间下：
 
 ```java
-ctx.registerCommand("hello", (command, args, sender) ->
-        sender.sendMessage("你好, " + ctx.info().name()));
+ctx.registerCommand("status", (command, args, sender) ->
+        sender.sendMessage("running"));
 ```
 
-执行：
-
-```
-exampleaddon:hello
-```
-
-- `CommandHandler.execute(String command, String[] args, CommandSender sender)`
-- `CommandSender.sendMessage(...)` 按 `[HH:mm:ss INFO]: ` 格式输出
-- 指令名可重合（不同命名空间），但**命名空间（插件名）不可重合**
-
-## only-daemon 模式
-
-`--webui false`（仅 Daemon）时指令系统同样可用：可查看/控制插件，插件可注册指令与 Daemon 路由。详见 [插件 API 文档](docs/addon.md)。
+执行 `myaddon:status`。插件热重载或停用时，其全部命令会注销。不同插件可以使用同名命令，但插件名称必须唯一。

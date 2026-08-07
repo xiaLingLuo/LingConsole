@@ -24,12 +24,12 @@ dependencies {
     implementation(project(":lingconsole-api"))
 
     implementation("io.javalin:javalin:7.2.2")
-    implementation("com.fasterxml.jackson.core:jackson-databind:2.19.2")
+    implementation("com.fasterxml.jackson.core:jackson-databind:2.22.1")
     implementation("org.thymeleaf:thymeleaf:3.1.5.RELEASE")
     implementation("org.xerial:sqlite-jdbc:3.53.2.1")
     implementation("com.zaxxer:HikariCP:7.1.0")
     implementation("org.tomlj:tomlj:1.1.1")
-    implementation("org.yaml:snakeyaml:2.2")
+    implementation("org.yaml:snakeyaml:2.6")
     implementation("org.bouncycastle:bcprov-jdk18on:1.85")
     implementation("ch.qos.logback:logback-classic:1.6.1")
 }
@@ -42,6 +42,10 @@ tasks.shadowJar {
     archiveBaseName.set("LingConsole")
     archiveClassifier.set("")
     archiveVersion.set("")
+    duplicatesStrategy = DuplicatesStrategy.EXCLUDE
+    filesMatching("META-INF/services/**") {
+        duplicatesStrategy = DuplicatesStrategy.INCLUDE
+    }
     mergeServiceFiles()
     
     exclude("META-INF/*.SF", "META-INF/*.DSA", "META-INF/*.RSA")

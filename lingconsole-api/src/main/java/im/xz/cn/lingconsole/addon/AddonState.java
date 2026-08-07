@@ -19,12 +19,8 @@ package im.xz.cn.lingconsole.addon;
 
 
 public enum AddonState {
-    
     LOADED,
-    
     ENABLED,
-    
     DISABLED,
-    
     ERROR
 }

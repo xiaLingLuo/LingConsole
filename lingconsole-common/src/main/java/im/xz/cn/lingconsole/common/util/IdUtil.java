@@ -27,6 +27,9 @@ public final class IdUtil {
 
     private static final String PASSWORD_CHARS =
             "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
+    private static final String PASSWORD_LETTERS =
+            "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";
+    private static final String PASSWORD_DIGITS = "0123456789";
 
     private IdUtil() {
     }
@@ -46,11 +49,25 @@ public final class IdUtil {
 
     
     public static String randomPassword(int length) {
-        StringBuilder sb = new StringBuilder(length);
-        for (int i = 0; i < length; i++) {
-            sb.append(PASSWORD_CHARS.charAt(RANDOM.nextInt(PASSWORD_CHARS.length())));
+        if (length < 0) {
+            throw new IllegalArgumentException("length must not be negative");
         }
-        return sb.toString();
+        char[] password = new char[length];
+        int offset = 0;
+        if (length >= 2) {
+            password[offset++] = PASSWORD_LETTERS.charAt(RANDOM.nextInt(PASSWORD_LETTERS.length()));
+            password[offset++] = PASSWORD_DIGITS.charAt(RANDOM.nextInt(PASSWORD_DIGITS.length()));
+        }
+        for (int i = offset; i < length; i++) {
+            password[i] = PASSWORD_CHARS.charAt(RANDOM.nextInt(PASSWORD_CHARS.length()));
+        }
+        for (int i = password.length - 1; i > 0; i--) {
+            int swap = RANDOM.nextInt(i + 1);
+            char value = password[i];
+            password[i] = password[swap];
+            password[swap] = value;
+        }
+        return new String(password);
     }
 
     

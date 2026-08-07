@@ -46,6 +46,7 @@ public class DaemonConnection {
         disconnect();
         client = new SocketIOClient(node.getUrl(), "/daemon", java.time.Duration.ofSeconds(4));
         if (!client.connect()) {
+            client.disconnect();
             client = null;
             return false;
         }

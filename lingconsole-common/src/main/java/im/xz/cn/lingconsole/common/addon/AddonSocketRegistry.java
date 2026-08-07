@@ -27,17 +27,21 @@ import java.util.concurrent.CopyOnWriteArrayList;
 
 public final class AddonSocketRegistry {
 
-    public record Registration(String namespace, String event, AddonSocketHandler handler) {
+    public record Registration(String owner, String namespace, String event, String requiredPermission,
+                               AddonSocketHandler handler) {
     }
 
     private final Map<String, List<Registration>> byAddon = new ConcurrentHashMap<>();
 
-    public void register(String addonName, String namespace, String event, AddonSocketHandler handler) {
-        if (addonName == null || namespace == null || event == null || handler == null) {
-            return;
+    public void register(String addonName, String namespace, String event, String requiredPermission,
+                         AddonSocketHandler handler) {
+        if (addonName == null || addonName.isBlank() || namespace == null || namespace.isBlank()
+                || event == null || event.isBlank() || requiredPermission == null
+                || requiredPermission.isBlank() || handler == null) {
+            throw new IllegalArgumentException("addonName, namespace, event, requiredPermission and handler are required");
         }
         byAddon.computeIfAbsent(addonName, k -> new CopyOnWriteArrayList<>())
-                .add(new Registration(namespace, event, handler));
+                .add(new Registration(addonName, namespace, event, requiredPermission, handler));
     }
 
     
@@ -51,8 +55,19 @@ public final class AddonSocketRegistry {
         return list == null ? List.of() : List.copyOf(list);
     }
 
+    public java.util.Set<String> addonNames() {
+        return java.util.Set.copyOf(byAddon.keySet());
+    }
+
     
     public void clear(String addonName) {
         byAddon.remove(addonName);
+    }
+
+    public Registration find(String addonName, String namespace, String event) {
+        return all(addonName).stream()
+                .filter(reg -> reg.namespace().equals(namespace) && reg.event().equals(event))
+                .reduce((first, second) -> second)
+                .orElse(null);
     }
 }

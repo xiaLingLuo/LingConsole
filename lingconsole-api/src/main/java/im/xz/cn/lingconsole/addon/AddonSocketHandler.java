@@ -20,6 +20,5 @@ package im.xz.cn.lingconsole.addon;
 
 @FunctionalInterface
 public interface AddonSocketHandler {
-
     void handle(AddonSocketConnection connection, String event, Object data);
 }

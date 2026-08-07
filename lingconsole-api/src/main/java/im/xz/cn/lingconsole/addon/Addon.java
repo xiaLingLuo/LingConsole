@@ -19,16 +19,10 @@ package im.xz.cn.lingconsole.addon;
 
 
 public interface Addon {
-
-    
     default void onLoad(AddonContext ctx) {
     }
-
-    
     default void onEnable(AddonContext ctx) {
     }
-
-    
     default void onDisable() {
     }
 }

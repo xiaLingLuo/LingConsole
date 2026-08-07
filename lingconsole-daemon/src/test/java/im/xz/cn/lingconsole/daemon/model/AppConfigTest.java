@@ -47,6 +47,7 @@ class AppConfigTest {
         cfg.setRunAsUser("minecraft");
         cfg.setArgs(List.of("--port", "25565"));
         cfg.setEnvironment(Map.of("JAVA_HOME", "/usr/lib/jvm/java"));
+        cfg.setProtectAppFilesFromSymlinkEscape(false);
 
         Path file = tempDir.resolve("config.toml");
         Files.writeString(file, cfg.toToml());
@@ -63,6 +64,7 @@ class AppConfigTest {
         assertEquals("minecraft", loaded.getRunAsUser());
         assertEquals(List.of("--port", "25565"), loaded.getArgs());
         assertEquals("/usr/lib/jvm/java", loaded.getEnvironment().get("JAVA_HOME"));
+        assertEquals(false, loaded.isProtectAppFilesFromSymlinkEscape());
     }
 
     @Test
@@ -79,5 +81,6 @@ class AppConfigTest {
         assertTrue(cfg.getArgs().isEmpty());
         assertTrue(cfg.getEnvironment().isEmpty());
         assertEquals("UTF-8", cfg.getEncoding());
+        assertTrue(cfg.isProtectAppFilesFromSymlinkEscape());
     }
 }

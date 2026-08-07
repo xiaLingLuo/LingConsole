@@ -192,7 +192,7 @@ public class PackageController {
         require(ctx);
         Node node = node(ctx);
         String name = requirePackageName(ctx.bodyAsClass(NameRequest.class).name());
-        ExecResult r = run(node, "apt-cache search --no-all-versions " + name + " 2>/dev/null", 30000);
+        ExecResult r = run(node, "apt-cache search " + name + " 2>/dev/null", 30000);
         List<Map<String, String>> packages = new ArrayList<>();
         if (r.exitCode == 0 && r.stdout != null) {
             for (String line : r.stdout.split("\n")) {

@@ -34,6 +34,13 @@ public final class ReverseProxy {
             "connection", "keep-alive", "proxy-authenticate", "proxy-authorization",
             "te", "trailer", "transfer-encoding", "upgrade", "host", "content-length");
 
+    private static final Set<String> FORBIDDEN = Set.of(
+            "cookie", "authorization", "x-lingconsole-token");
+
+    private static final Set<String> SAFE_ALWAYS = Set.of(
+            "content-type", "accept", "accept-language", "user-agent",
+            "referer", "origin", "x-requested-with");
+
     private static final HttpClient CLIENT = HttpClient.newBuilder()
             .connectTimeout(Duration.ofSeconds(10))
             .followRedirects(HttpClient.Redirect.NEVER)
@@ -61,10 +68,16 @@ public final class ReverseProxy {
                         ? HttpRequest.BodyPublishers.noBody()
                         : HttpRequest.BodyPublishers.ofByteArray(body));
             }
+            Set<String> forward = cfg.forwardHeaders() == null ? Set.of() : cfg.forwardHeaders();
             ctx.headerMap().forEach((k, v) -> {
-                if (!HOP_BY_HOP.contains(k.toLowerCase())) {
-                    b.header(k, v);
+                String lower = k.toLowerCase();
+                if (HOP_BY_HOP.contains(lower)) {
+                    return;
                 }
+                if (FORBIDDEN.contains(lower) || !SAFE_ALWAYS.contains(lower) && !forward.contains(lower)) {
+                    return;
+                }
+                b.header(k, v);
             });
             b.header("X-Forwarded-For", ctx.ip());
             b.header("X-Forwarded-Proto", ctx.scheme());

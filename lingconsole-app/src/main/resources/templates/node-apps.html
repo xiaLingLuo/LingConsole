@@ -55,6 +55,7 @@
                     <option value="docker">docker (容器模式, 开发中)</option>
                 </select>
             </div>
+            <div class="lc-config-note" id="app-type-hint">普通进程在多租户场景下不安全，如果你打算出租你的服务器，你应该使用 docker 模式。</div>
             <div class="lc-form__group lc-form__check">
                 <label><input type="checkbox" id="app-autostart"> Daemon 启动时自动运行</label>
             </div>
@@ -106,6 +107,9 @@
             <div class="lc-form__group">
                 <label class="lc-form__label">工作目录 (WorkDIR)</label>
                 <input class="lc-input" type="text" id="adv-workdir" placeholder="应用数据目录">
+            </div>
+            <div class="lc-form__group lc-form__check">
+                <label><input type="checkbox" id="adv-protect-app-files" checked> 阻止应用文件管理访问符号链接及 Junction</label>
             </div>
             <div class="lc-form__group">
                 <label class="lc-form__label">启动用户 (Linux 专用, 留空则以 Daemon 用户运行)</label>

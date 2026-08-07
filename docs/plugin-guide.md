@@ -1,32 +1,35 @@
 # 插件开发教程
 
-> 从零开发一个 LingConsole 插件。完整可运行示例见 `exampleAddon/`。
+本教程面向 LingConsole 1.2.8。可运行参考位于仓库 `exampleAddon/`。
 
-## 0. 环境准备
+## 1. 准备
 
-- **JDK 25**（编译与运行时）
-- **lingconsole-api.jar**：编译后与 fat jar 一同输出于 `build/libs/lingconsole-api.jar`；示例项目也内置了 `exampleAddon/libs/lingconsole-api.jar`
-- 路由处理器使用 Javalin 7 的 `Context`，编译时需 **javalin.jar**（`exampleAddon/libs/javalin.jar`）
+先构建宿主 API：
 
-## 1. 项目结构
-
+```bash
+gradlew.bat build
 ```
+
+需要 JDK 25、`build/libs/lingconsole-api.jar`，以及编译路由处理器所需的 Javalin 7 API。依赖应使用 `compileOnly`，不要把宿主 API 打入插件。
+
+## 2. 项目结构
+
+```text
 myaddon/
-├── addon.toml
-└── src/com/example/MyAddon.java
+|-- addon.toml
+|-- build.gradle.kts
+`-- src/main/java/com/example/MyAddon.java
 ```
 
-## 2. 描述文件 `addon.toml`
+`addon.toml`：
 
 ```toml
-name = "myaddon"                    # 命名空间 (唯一)
+name = "myaddon"
 version = "1.0.0"
 main = "com.example.MyAddon"
 author = "You"
-description = "我的第一个插件"
-api-version = "1.1"
-# dependencies = ["other-addon"]        # 硬依赖
-# soft-dependencies = ["optional-helper"]
+description = "My first addon"
+api-version = "1.2.8"
 ```
 
 ## 3. 主类
@@ -35,121 +38,113 @@ api-version = "1.1"
 package com.example;
 
 import im.xz.cn.lingconsole.addon.*;
-import im.xz.cn.lingconsole.addon.service.*;
-import java.util.*;
+import java.util.Map;
 
-public class MyAddon implements Addon {
+public final class MyAddon implements Addon {
+    private AddonContext context;
 
     @Override
-    public void onLoad(AddonContext ctx) {
-        // 1) 声明配置
-        ctx.config().define("greeting", ConfigType.STRING, "问候语", "描述", "Hello");
+    public void onLoad(AddonContext context) {
+        this.context = context;
 
-        // 2) 面板路由 (PUBLIC 表示任意登录用户可访问)
-        ctx.registerPanelRoute(AddonRouteMethod.GET, "/hello",
-                h -> h.json(Map.of("greeting",
-                        ctx.config().getString("greeting", "Hello"))),
-                AddonContext.PUBLIC);
+        context.registerPermission("status.read", "Read addon status");
+        context.config().define("message", ConfigType.STRING,
+                "Message", "Returned by the status endpoint", "hello");
 
-        // 3) Daemon 路由
-        ctx.registerDaemonRoute(AddonRouteMethod.GET, "/ping",
-                h -> h.json(Map.of("pong", true)));
+        context.registerPanelRoute(AddonRouteMethod.GET, "/status", h ->
+                h.json(Map.of("message",
+                        context.config().getString("message", "hello"))),
+                "status.read");
 
-        // 4) 控制台指令: myaddon:status
-        ctx.registerCommand("status", (cmd, args, sender) ->
-                sender.sendMessage("myaddon 运行中, 版本 " + ctx.info().version()));
+        context.registerDaemonRoute(AddonRouteMethod.GET, "/health", h ->
+                h.json(Map.of("status", "ok")));
 
-        // 5) Socket 事件
-        ctx.registerSocketEvent("/panel", "myaddon:hello", (conn, event, data) ->
-                conn.emit("myaddon:hello", Map.of("echo", data)));
+        context.registerSocketEvent("/panel", "myaddon:status", "status.read",
+                (connection, event, data) ->
+                        connection.emit(event, Map.of("status", "ok")));
 
-        // 6) 侧栏菜单
-        ctx.registerPanelMenu("我的插件", "/api/addon/myaddon/hello");
+        context.registerCommand("status", (command, args, sender) ->
+                sender.sendMessage("myaddon is enabled"));
     }
 
     @Override
-    public void onEnable(AddonContext ctx) {
-        ctx.logger().info("myaddon enabled");
+    public void onEnable(AddonContext context) {
+        context.logger().info("enabled");
     }
 
     @Override
     public void onDisable() {
-        // 清理资源
+        // Close resources created directly by the addon here.
     }
 }
 ```
 
-## 4. 构建
+Panel 路由和 Socket 事件应按最小权限原则声明权限。`AddonContext.PUBLIC` 仍要求用户已登录，只是跳过额外权限键。Daemon 路由由 Daemon Key 保护，不承载 Panel 用户身份。
 
-### Gradle
+## 4. Gradle 配置
 
 ```kotlin
 plugins { java }
-java { toolchain { languageVersion = JavaLanguageVersion.of(25) } }
-tasks.withType<JavaCompile>().configureEach { options.encoding = "UTF-8" }
 
-val apiJar = file("libs/lingconsole-api.jar")
-val javalinJar = file("libs/javalin.jar")
-dependencies { compileOnly(files(apiJar, javalinJar)) }
+repositories { mavenCentral() }
+
+dependencies {
+    compileOnly(files("libs/lingconsole-api.jar", "libs/javalin.jar"))
+}
+
+java {
+    toolchain { languageVersion = JavaLanguageVersion.of(25) }
+}
+
+tasks.withType<JavaCompile>().configureEach {
+    options.encoding = "UTF-8"
+}
 
 tasks.jar {
     from("addon.toml")
 }
 ```
 
-```bash
-gradle build
-```
+第三方库可打入插件 JAR；不要打入 LingConsole API。确保 `addon.toml` 位于最终 JAR 根目录。
 
-> 要求描述文件 `addon.toml` 位于 JAR 根目录。
-
-## 5. 部署与启用
+## 5. 构建与部署
 
 ```bash
-# 复制到插件目录
-sudo cp myaddon.jar /lingConsole/addons/
-# 重启生效
+gradle clean build
+cp build/libs/myaddon.jar /lingConsole/addons/
 ```
+
+首次部署后重启 LingConsole。后续可以替换 JAR，并由拥有 `lingconsole.permission.assign` 的用户在插件页执行热重载。热重载会调用旧实例 `onDisable`、注销宿主资源、关闭类加载器，再创建新上下文和实例。
 
 ## 6. 验证
 
-- 面板路由：`GET /api/addon/myaddon/hello`（需登录）
-- Daemon 路由：`GET /consoleapi/addon/myaddon/ping`（需 `X-LingConsole-Key`）
-- 控制台指令：在启动窗口输入 `myaddon:status`，输出 `myaddon 运行中, 版本 1.0.0`
-- 插件管理页 `/addons` 中显示 `myaddon[OK]`
+- Panel 路由：登录后请求 `/api/addon/myaddon/status`。
+- Daemon 路由：携带 `X-LingConsole-Key` 请求 `/consoleapi/addon/myaddon/health`。
+- Panel Socket：连接 `/panel` 后发送 `myaddon:status`，当前用户必须拥有 `myaddon.status.read`。
+- 控制台：输入 `myaddon:status`。
+- 插件页：确认状态为 `ENABLED`，配置项可保存并热重载。
 
-## 7. 热重载
-
-在 `/addons` 管理页编辑配置并点击**保存并热重载**，或改代码后重新 `gradle build` + 复制 + 热重载。热重载会：
-
-1. 调用旧实例 `onDisable`
-2. 关闭旧类加载器
-3. 用新 jar 重新加载（新类加载器、新实例）
-4. 重建路由 / 指令 / 事件 / 反代 / 菜单
-
-## 8. 服务与远程节点
-
-所有服务接口都接受 `nodeId`，可操作**远端 Daemon**（A 的 WebUI 管理 B 的 nginx 等）：
+## 7. 远端服务
 
 ```java
-// 在节点上执行命令
-ExecResult r = ctx.exec().exec(nodeId, "nginx -t", 5000);
-if (r.success()) ctx.exec().exec(nodeId, "nginx -s reload", 5000);
-
-// 读写节点文件
-ctx.files().writeFile(nodeId, "/etc/nginx/nginx.conf", content);
-
-// 管理节点应用
-ctx.apps().startApp(nodeId, appId);
+var nodes = context.nodes().listNodes();
+var result = context.exec().exec(nodeId, "nginx -t", 5000);
+if (result.success()) {
+    context.apps().restartApp(nodeId, appId);
+}
+context.logs().record("nginx.reload", nodeId, "configuration reloaded");
 ```
 
-## 9. 发布
+服务接口代表宿主权限，不自动应用发起请求的浏览器用户权限。暴露这些能力的插件入口必须进行权限保护和参数校验，不要把用户输入直接拼入命令、路径、目标 URL 或响应头。
 
-- 设置正确的 `dependencies`（硬依赖，缺失不加载）与 `soft-dependencies`（软依赖，存在则优先加载）
-- 独立类加载器**子优先**：可在 jar 内内嵌第三方依赖；`im.xz.cn.lingconsole.addon.*` 包强制用宿主版本
-- 权限：公开接口显式传 `AddonContext.PUBLIC`
+## 8. 发布检查
 
-## 10. 调试
+- 使用唯一、稳定、只含规范字符的插件名。
+- 填写准确的 `api-version`、硬依赖和软依赖。
+- 所有 Panel 路由、代理和 Socket 事件使用最小权限。
+- 敏感代理头只按需加入白名单。
+- 调度任务和自行创建的线程、连接、文件句柄在 `onDisable` 中关闭。
+- 不在日志、配置响应或异常中泄露密码、令牌和 Daemon Key。
+- 在完整宿主和 only-daemon 模式下分别验证实际使用的能力。
 
-- `ctx.logger().info/warn/error/debug("msg {}", arg)` 输出到宿主日志（前缀 `[插件名]`）
-- 插件加载/启用失败会显示 `[ERR]` 与错误信息（`/addons` 页与控制台 `addons` 指令）
+API 详细说明见 [插件 API](addon.md)。

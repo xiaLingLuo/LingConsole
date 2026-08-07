@@ -13,10 +13,42 @@
     <section class="lc-content">
         <div class="lc-card">
             <div class="lc-card__body">
+                <form id="logs-filter" class="lc-form" style="margin-bottom:16px">
+                    <div class="lc-form__row">
+                        <div class="lc-form__group">
+                            <label for="logs-q">搜索</label>
+                            <input id="logs-q" class="lc-input" type="search" maxlength="200" placeholder="操作、目标、详情、用户、插件、节点或应用">
+                        </div>
+                        <div class="lc-form__group">
+                            <label for="logs-source">来源</label>
+                            <select id="logs-source" class="lc-select">
+                                <option value="CORE" selected>核心日志</option>
+                                <option value="PLUGIN">插件日志</option>
+                                <option value="ALL">全部日志</option>
+                            </select>
+                        </div>
+                        <div class="lc-form__group">
+                            <label for="logs-plugin">插件</label>
+                            <input id="logs-plugin" class="lc-input" maxlength="100">
+                        </div>
+                        <div class="lc-form__group">
+                            <label for="logs-action">操作</label>
+                            <input id="logs-action" class="lc-input" maxlength="100">
+                        </div>
+                    </div>
+                    <div class="lc-form__row">
+                        <div class="lc-form__group"><label for="logs-user">用户 ID</label><input id="logs-user" class="lc-input" maxlength="100"></div>
+                        <div class="lc-form__group"><label for="logs-node">节点 ID</label><input id="logs-node" class="lc-input" maxlength="100"></div>
+                        <div class="lc-form__group"><label for="logs-app">应用 ID</label><input id="logs-app" class="lc-input" maxlength="100"></div>
+                        <div class="lc-form__group"><label for="logs-request">请求 ID</label><input id="logs-request" class="lc-input" maxlength="100"></div>
+                        <button class="lc-btn lc-btn--primary" type="submit">查询</button>
+                    </div>
+                </form>
                 <table class="lc-table">
                     <thead>
                     <tr>
                         <th>时间</th>
+                        <th>来源</th>
                         <th>操作人</th>
                         <th>动作</th>
                         <th>目标</th>
@@ -25,9 +57,14 @@
                     </tr>
                     </thead>
                     <tbody id="logs-tbody">
-                    <tr><td colspan="6" class="lc-table__empty">加载中...</td></tr>
+                    <tr><td colspan="7" class="lc-table__empty">加载中...</td></tr>
                     </tbody>
                 </table>
+                <div style="display:flex;align-items:center;justify-content:flex-end;gap:8px;margin-top:12px">
+                    <button id="logs-prev" class="lc-btn" type="button">上一页</button>
+                    <span id="logs-page">1 / 1</span>
+                    <button id="logs-next" class="lc-btn" type="button">下一页</button>
+                </div>
             </div>
         </div>
     </section>

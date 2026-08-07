@@ -23,7 +23,9 @@
         dbPath: "数据库路径",
         name: "节点名称", whiteListEnabled: "IP 白名单", whiteListIps: "白名单 IP",
         authTimeout: "认证超时 (秒)", defaultAppPath: "应用目录",
-        maxFileTasks: "最大文件任务", maxZipSize: "最大压缩 (MB)",
+        maxFileTasks: "最大文件任务",
+        archiveCompressMaxEntries: "压缩条目上限", archiveCompressMaxTotalBytes: "压缩总字节上限", archiveCompressTimeoutSeconds: "压缩超时 (秒)",
+        archiveExtractMaxEntries: "解压条目上限", archiveExtractMaxTotalBytes: "解压总字节上限", archiveExtractTimeoutSeconds: "解压超时 (秒)",
         outputBufferSize: "输出缓冲 (KB)", softShutdownEnabled: "软关闭",
         softShutdownWaitSeconds: "软关闭等待 (秒)"
     };
@@ -74,6 +76,18 @@
             const confirmPassword = document.getElementById("confirm-password").value;
             if (!oldPassword || !newPassword) {
                 errorEl.textContent = "请填写完整";
+                return;
+            }
+            if (newPassword.length < 8) {
+                errorEl.textContent = "新密码长度至少 8 位";
+                return;
+            }
+            if (!/[A-Za-z]/.test(newPassword) || !/[0-9]/.test(newPassword)) {
+                errorEl.textContent = "新密码必须同时包含字母和数字";
+                return;
+            }
+            if (newPassword === oldPassword) {
+                errorEl.textContent = "新密码不能与原密码相同";
                 return;
             }
             if (newPassword !== confirmPassword) {

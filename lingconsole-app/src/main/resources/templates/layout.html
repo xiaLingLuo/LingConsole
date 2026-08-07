@@ -15,20 +15,20 @@
         <span class="lc-sidebar__logo-text">Ling<em>Console</em></span>
     </div>
     <nav class="lc-sidebar__menu">
-        <a class="lc-sidebar__menu-item"
-           th:classappend="${active == 'dashboard'} ? 'is-active' : ''" href="/dashboard">
+        <a class="lc-sidebar__menu-item" id="menu-dashboard"
+           th:classappend="${active == 'dashboard'} ? 'is-active' : ''" href="/dashboard" style="display:none">
             <span class="lc-sidebar__menu-icon">◉</span> 仪表盘
         </a>
-        <a class="lc-sidebar__menu-item"
-           th:classappend="${active == 'nodes'} ? 'is-active' : ''" href="/nodes">
+        <a class="lc-sidebar__menu-item" id="menu-nodes"
+           th:classappend="${active == 'nodes'} ? 'is-active' : ''" href="/nodes" style="display:none">
             <span class="lc-sidebar__menu-icon">⬢</span> 节点管理
         </a>
-        <a class="lc-sidebar__menu-item"
-           th:classappend="${active == 'apps'} ? 'is-active' : ''" href="/apps">
+        <a class="lc-sidebar__menu-item" id="menu-apps"
+           th:classappend="${active == 'apps'} ? 'is-active' : ''" href="/apps" style="display:none">
             <span class="lc-sidebar__menu-icon">▤</span> 应用管理
         </a>
-        <a class="lc-sidebar__menu-item"
-           th:classappend="${active == 'monitor'} ? 'is-active' : ''" href="/monitor">
+        <a class="lc-sidebar__menu-item" id="menu-monitor"
+           th:classappend="${active == 'monitor'} ? 'is-active' : ''" href="/monitor" style="display:none">
             <span class="lc-sidebar__menu-icon">◔</span> 系统监控
         </a>
         <a class="lc-sidebar__menu-item" id="menu-packages"
@@ -47,12 +47,12 @@
            th:classappend="${active == 'addons'} ? 'is-active' : ''" href="/addons" style="display:none">
             <span class="lc-sidebar__menu-icon">▦</span> 插件
         </a>
-        <a class="lc-sidebar__menu-item"
-           th:classappend="${active == 'logs'} ? 'is-active' : ''" href="/logs">
+        <a class="lc-sidebar__menu-item" id="menu-logs"
+           th:classappend="${active == 'logs'} ? 'is-active' : ''" href="/logs" style="display:none">
             <span class="lc-sidebar__menu-icon">≣</span> 操作日志
         </a>
-        <a class="lc-sidebar__menu-item"
-           th:classappend="${active == 'settings'} ? 'is-active' : ''" href="/settings">
+        <a class="lc-sidebar__menu-item" id="menu-settings"
+           th:classappend="${active == 'settings'} ? 'is-active' : ''" href="/settings" style="display:none">
             <span class="lc-sidebar__menu-icon">⚙</span> 系统设置
         </a>
     </nav>

@@ -19,6 +19,5 @@ package im.xz.cn.lingconsole.addon;
 
 
 public interface CommandSender {
-
     void sendMessage(String message);
 }

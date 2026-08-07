@@ -44,6 +44,7 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -183,5 +184,26 @@ class TerminalProxyIntegrationTest {
         }
         
         panel.disconnect();
+    }
+
+    @Test
+    void logoutImmediatelyClosesPanelSocket() throws Exception {
+        String cookie = loginCookie();
+        SocketIOClient panel = new SocketIOClient("127.0.0.1", panelPort, "/panel", false,
+                java.time.Duration.ofSeconds(5)).cookie(cookie);
+        assertTrue(panel.connect());
+
+        HttpRequest logout = HttpRequest.newBuilder(
+                        URI.create("http://127.0.0.1:" + panelPort + "/api/auth/logout"))
+                .header("Cookie", cookie)
+                .POST(HttpRequest.BodyPublishers.noBody())
+                .build();
+        assertEquals(200, http.send(logout, HttpResponse.BodyHandlers.ofString()).statusCode());
+
+        long deadline = System.currentTimeMillis() + 3000;
+        while (panel.isConnected() && System.currentTimeMillis() < deadline) {
+            Thread.sleep(25);
+        }
+        assertFalse(panel.isConnected(), "logout 应立即关闭该 token 的 Panel Socket");
     }
 }

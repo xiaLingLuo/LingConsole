@@ -57,6 +57,8 @@ public class AddonManager {
     
     private volatile java.util.function.Consumer<String> onReloaded;
 
+    private volatile java.util.function.Consumer<String> onDisable;
+
     public AddonManager(Path addonsDir) {
         this.addonsDir = addonsDir;
     }
@@ -67,6 +69,10 @@ public class AddonManager {
 
     public void setOnReloaded(java.util.function.Consumer<String> onReloaded) {
         this.onReloaded = onReloaded;
+    }
+
+    public void setOnDisable(java.util.function.Consumer<String> onDisable) {
+        this.onDisable = onDisable;
     }
 
     public void setContextFactory(AddonContextFactory factory) {
@@ -176,6 +182,7 @@ public class AddonManager {
                 loaded.state = AddonState.ERROR;
                 loaded.error = String.valueOf(e.getMessage());
                 log.error("插件 [{}] 加载失败: {}", desc.name(), e.getMessage(), e);
+                closeContext(context, desc.name());
                 try {
                     cl.close();
                 } catch (IOException ignore) {
@@ -206,14 +213,7 @@ public class AddonManager {
             return false;
         }
         log.info("插件 [{}] 热重载中...", name);
-        java.util.function.Consumer<String> clear = onReloadStart;
-        if (clear != null) {
-            try {
-                clear.accept(name);
-            } catch (Exception e) {
-                log.debug("插件 [{}] 重载清理回调异常", name, e);
-            }
-        }
+        Throwable cleanupFailure = runCallback(onReloadStart, name, "重载清理");
         if (old.instance() != null) {
             try {
                 old.instance().onDisable();
@@ -221,6 +221,7 @@ public class AddonManager {
                 log.error("插件 [{}] onDisable 异常: {}", name, e.getMessage(), e);
             }
         }
+        closeContext(old.context(), name);
         AddonClassLoader loader = old.classLoader();
         if (loader != null) {
             try {
@@ -228,6 +229,12 @@ public class AddonManager {
             } catch (IOException e) {
                 log.debug("插件 [{}] 类加载器关闭失败", name, e);
             }
+        }
+        if (cleanupFailure != null) {
+            old.state = AddonState.ERROR;
+            old.error = "重载清理失败: " + cleanupFailure.getMessage();
+            byName.put(name, old);
+            return false;
         }
         
         load(old.descriptor());
@@ -244,16 +251,27 @@ public class AddonManager {
                 loaded.state = AddonState.ERROR;
                 loaded.error = String.valueOf(e.getMessage());
                 log.error("插件 [{}] 热重载启用失败: {}", name, e.getMessage(), e);
+                closeContext(loaded.context(), name);
                 ok = false;
             }
         }
         
-        java.util.function.Consumer<String> cb = onReloaded;
-        if (cb != null) {
-            try {
-                cb.accept(name);
-            } catch (Exception e) {
-                log.debug("插件 [{}] 重载回调异常", name, e);
+        if (ok) {
+            Throwable wiringFailure = runCallback(onReloaded, name, "重载接线");
+            if (wiringFailure != null) {
+                loaded.state = AddonState.ERROR;
+                loaded.error = "重载接线失败: " + wiringFailure.getMessage();
+                closeContext(loaded.context(), name);
+                Throwable rollbackCleanupFailure = runCallback(onReloadStart, name, "失败回滚清理");
+                if (rollbackCleanupFailure != null) {
+                    log.error("插件 [{}] 失败回滚清理异常", name, rollbackCleanupFailure);
+                }
+                ok = false;
+            }
+        } else {
+            Throwable rollbackCleanupFailure = runCallback(onReloadStart, name, "失败回滚清理");
+            if (rollbackCleanupFailure != null) {
+                log.error("插件 [{}] 失败回滚清理异常", name, rollbackCleanupFailure);
             }
         }
         return ok;
@@ -295,6 +313,11 @@ public class AddonManager {
                 la.error = String.valueOf(e.getMessage());
                 log.error("插件 [{}] 停用失败: {}", la.descriptor().name(), e.getMessage(), e);
             } finally {
+                Throwable disableCleanupFailure = runCallback(onDisable, la.descriptor().name(), "停用清理");
+                if (disableCleanupFailure != null) {
+                    log.error("插件 [{}] 停用清理异常", la.descriptor().name(), disableCleanupFailure);
+                }
+                closeContext(la.context(), la.descriptor().name());
                 AddonClassLoader loader = la.classLoader();
                 if (loader != null) {
                     try {
@@ -308,6 +331,26 @@ public class AddonManager {
         log.info("全部插件已停用");
     }
 
+    private static Throwable runCallback(java.util.function.Consumer<String> callback, String name, String phase) {
+        if (callback == null) return null;
+        try {
+            callback.accept(name);
+            return null;
+        } catch (Throwable e) {
+            log.error("插件 [{}] {}回调异常", name, phase, e);
+            return e;
+        }
+    }
+
+    private static void closeContext(AddonContext context, String name) {
+        if (!(context instanceof AutoCloseable closeable)) return;
+        try {
+            closeable.close();
+        } catch (Exception e) {
+            log.warn("插件 [{}] Context 关闭失败: {}", name, e.getMessage());
+        }
+    }
+
     
     
     
@@ -319,7 +362,7 @@ public class AddonManager {
             boolean missing = false;
             for (String dep : d.dependencies()) {
                 if (dep != null && !dep.isBlank() && !descriptors.containsKey(dep)) {
-                    log.warn("插件 [{}] 硬依赖缺失: {} (跳过)", d.name(), dep);
+                    log.warn("插件 [{}] 硬依赖缺失: {}", d.name(), dep);
                     missing = true;
                     break;
                 }

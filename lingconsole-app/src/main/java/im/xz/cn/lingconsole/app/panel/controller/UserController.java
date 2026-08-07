@@ -83,8 +83,13 @@ public class UserController {
         PermissionMiddleware.requirePermission(ctx, Permissions.USER_MANAGE);
         User operator = AuthMiddleware.currentUser(ctx);
         UserRequest req = ctx.bodyAsClass(UserRequest.class);
-        if (req.username() == null || req.username().isBlank() || req.password() == null || req.password().length() < 6) {
-            throw ApiException.badRequest("用户名不能为空, 密码至少 6 位");
+        if (req.username() == null || req.username().isBlank()) {
+            throw ApiException.badRequest("用户名不能为空");
+        }
+        String err = im.xz.cn.lingconsole.common.util.PasswordPolicy.validate(
+                req.password(), null, req.username().trim());
+        if (err != null) {
+            throw ApiException.badRequest(err);
         }
         try {
             User user = userService.createUser(req.username().trim(), req.password());
@@ -105,18 +110,29 @@ public class UserController {
         User operator = AuthMiddleware.currentUser(ctx);
         String id = ctx.pathParam("id");
         UserRequest req = ctx.bodyAsClass(UserRequest.class);
+        if (im.xz.cn.lingconsole.app.panel.model.RootAccount.ROOT_ID.equals(id)) {
+            throw ApiException.badRequest("不可修改 root 账户, root 密码仅可由 root 本人修改");
+        }
         User target = userService.findById(id);
         if (target == null) {
             throw ApiException.notFound("用户不存在");
         }
+        boolean passwordChanged = req.password() != null && !req.password().isBlank();
+        if (passwordChanged) {
+            String err = im.xz.cn.lingconsole.common.util.PasswordPolicy.validate(
+                    req.password(), null, req.username() == null ? target.getUsername() : req.username());
+            if (err != null) {
+                throw ApiException.badRequest(err);
+            }
+        }
         try {
             User user = userService.updateUser(id, req.username(), req.password());
+            if (passwordChanged) {
+                sessionService.logoutAllForUser(id);
+            }
             if (req.groupIds() != null) {
                 PermissionMiddleware.requirePermission(ctx, Permissions.PERMISSION_ASSIGN);
                 userGroupRepository.setGroups(id, req.groupIds());
-            }
-            
-            if (req.password() != null && !req.password().isBlank()) {
                 sessionService.logoutAllForUser(id);
             }
             logService.record(operator.getId(), "user.update", user.getUsername(), "更新用户", ctx.ip());
@@ -133,6 +149,7 @@ public class UserController {
         String id = ctx.pathParam("id");
         try {
             userService.deleteUser(id);
+            sessionService.logoutAllForUser(id);
             userGroupRepository.setGroups(id, List.of());
             logService.record(operator.getId(), "user.delete", id, "删除用户", ctx.ip());
             ctx.json(ApiResponse.ok());
@@ -163,8 +180,12 @@ public class UserController {
     private void setGroups(Context ctx) {
         PermissionMiddleware.requirePermission(ctx, Permissions.PERMISSION_ASSIGN);
         String id = ctx.pathParam("id");
+        if (im.xz.cn.lingconsole.app.panel.model.RootAccount.ROOT_ID.equals(id)) {
+            throw ApiException.badRequest("不可修改 root 账户的权限组");
+        }
         GroupRequest req = ctx.bodyAsClass(GroupRequest.class);
         userGroupRepository.setGroups(id, req.groupIds() == null ? List.of() : req.groupIds());
+        sessionService.logoutAllForUser(id);
         ctx.json(ApiResponse.ok());
     }
 

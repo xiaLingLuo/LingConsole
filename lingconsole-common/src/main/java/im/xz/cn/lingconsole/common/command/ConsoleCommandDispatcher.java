@@ -27,7 +27,6 @@ import java.util.concurrent.ConcurrentHashMap;
 
 public final class ConsoleCommandDispatcher {
 
-    /** 原生指令默认命名空间: lingconsole: */
     public static final String DEFAULT_NAMESPACE = "lingconsole";
 
     private final Map<String, Map<String, CommandHandler>> namespaces = new ConcurrentHashMap<>();

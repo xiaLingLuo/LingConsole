@@ -17,16 +17,10 @@
  */
 package im.xz.cn.lingconsole.addon;
 
-
 public enum ConfigType {
-    
     STRING,
-    
     TEXT,
-    
     INT,
-    
     BOOL,
-    
     SELECT
 }

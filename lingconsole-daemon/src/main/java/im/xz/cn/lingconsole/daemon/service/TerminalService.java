@@ -29,6 +29,7 @@ import java.io.OutputStream;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.function.Consumer;
 
 
 public class TerminalService {
@@ -223,14 +224,16 @@ public class TerminalService {
     private static final class AppTerminal implements TerminalSession {
         private final String id;
         private final AppProcess appProcess;
+        private final Consumer<String> outputListener = this::onAppOutput;
+        private final Consumer<Boolean> runningListener = this::onAppRunning;
         private volatile OutputListener listener;
         private volatile boolean closed;
 
         AppTerminal(AppProcess appProcess) {
             this.id = IdUtil.uuid();
             this.appProcess = appProcess;
-            appProcess.addOutputListener(this::onAppOutput);
-            appProcess.addRunningListener(this::onAppRunning);
+            appProcess.addOutputListener(outputListener);
+            appProcess.addRunningListener(runningListener);
         }
 
         private void onAppOutput(String text) {
@@ -245,8 +248,8 @@ public class TerminalService {
             }
             if (!running) {
                 closed = true;
-                appProcess.removeOutputListener(this::onAppOutput);
-                appProcess.removeRunningListener(this::onAppRunning);
+                appProcess.removeOutputListener(outputListener);
+                appProcess.removeRunningListener(runningListener);
                 if (listener != null) {
                     listener.onStatus(false);
                     listener.onOutput("[LingConsole] 应用已停止。\r\n");
@@ -285,8 +288,8 @@ public class TerminalService {
         @Override
         public void close() {
             closed = true;
-            appProcess.removeOutputListener(this::onAppOutput);
-            appProcess.removeRunningListener(this::onAppRunning);
+            appProcess.removeOutputListener(outputListener);
+            appProcess.removeRunningListener(runningListener);
         }
 
         @Override

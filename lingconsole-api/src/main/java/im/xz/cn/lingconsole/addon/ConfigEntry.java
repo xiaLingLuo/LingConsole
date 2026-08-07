@@ -19,7 +19,6 @@ package im.xz.cn.lingconsole.addon;
 
 import java.util.List;
 
-
 public record ConfigEntry(
         String key,
         ConfigType type,

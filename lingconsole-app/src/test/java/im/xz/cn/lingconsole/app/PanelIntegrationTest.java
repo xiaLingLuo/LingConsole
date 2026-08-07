@@ -145,8 +145,40 @@ class PanelIntegrationTest {
                 .build();
         HttpResponse<String> resp = http.send(req, HttpResponse.BodyHandlers.ofString());
         assertEquals(200, resp.statusCode());
-        JsonNode node = MAPPER.readTree(resp.body());
-        return node.path("data").path("token").asText();
+        return tokenFromCookie(resp);
+    }
+
+    @Test
+    void loginRejectsBodyAboveEightKibBeforeJsonParsing() throws Exception {
+        String body = "{\"username\":\"ling\",\"password\":\"" + "x".repeat(9000) + "\"}";
+        HttpRequest req = HttpRequest.newBuilder(
+                        URI.create("http://127.0.0.1:" + panelPort + "/api/auth/login"))
+                .header("Content-Type", "application/json")
+                .POST(HttpRequest.BodyPublishers.ofString(body))
+                .build();
+
+        HttpResponse<String> response = http.send(req, HttpResponse.BodyHandlers.ofString());
+        assertEquals(413, response.statusCode());
+    }
+
+    @Test
+    void ordinaryCreateRejectsEnvironmentField() throws Exception {
+        String token = login("ling", rootPw);
+        String nodeId = firstNodeId(token);
+        String body = "{\"id\":\"forbidden-env\",\"name\":\"forbidden-env\","
+                + "\"command\":\"echo ok\",\"environment\":{\"TOKEN\":\"secret\"}}";
+
+        HttpResponse<String> response = apiPost("/api/nodes/" + nodeId + "/apps", token, body);
+        assertEquals(403, response.statusCode());
+    }
+
+    private String tokenFromCookie(HttpResponse<String> response) throws Exception {
+        assertTrue(MAPPER.readTree(response.body()).path("data").path("token").isMissingNode(),
+                "登录 JSON 不应返回 token");
+        String setCookie = response.headers().firstValue("Set-Cookie").orElseThrow();
+        String cookie = setCookie.split(";", 2)[0];
+        assertTrue(cookie.startsWith("ling_session="));
+        return cookie.substring("ling_session=".length());
     }
 
     private HttpResponse<String> apiGet(String path, String token) throws Exception {
@@ -194,6 +226,30 @@ class PanelIntegrationTest {
     }
 
     @Test
+    void logoutUsesAuthenticatedHeaderToken() throws Exception {
+        String token = login("ling", rootPw);
+        HttpResponse<String> logout = apiPost("/api/auth/logout", token, "");
+        assertEquals(200, logout.statusCode());
+        assertEquals(401, apiGet("/api/auth/me", token).statusCode());
+    }
+
+    @Test
+    void writeRequestRequiresFullSameOrigin() throws Exception {
+        String body = MAPPER.writeValueAsString(java.util.Map.of("username", "ling", "password", rootPw));
+        for (String origin : java.util.List.of(
+                "https://127.0.0.1:" + panelPort,
+                "http://127.0.0.1:" + (panelPort + 1))) {
+            HttpRequest request = HttpRequest.newBuilder(
+                            URI.create("http://127.0.0.1:" + panelPort + "/api/auth/login"))
+                    .header("Origin", origin)
+                    .header("Content-Type", "application/json")
+                    .POST(HttpRequest.BodyPublishers.ofString(body))
+                    .build();
+            assertEquals(403, http.send(request, HttpResponse.BodyHandlers.ofString()).statusCode(), origin);
+        }
+    }
+
+    @Test
     void rootLoginAndMe() throws Exception {
         
         String body = MAPPER.writeValueAsString(java.util.Map.of("username", "ling", "password", rootPw));
@@ -207,7 +263,7 @@ class PanelIntegrationTest {
         assertTrue(setCookie.contains("HttpOnly"), "Cookie 应含 HttpOnly");
         assertTrue(setCookie.contains("SameSite=Strict"), "Cookie 应含 SameSite=Strict");
 
-        String token = MAPPER.readTree(loginResp.body()).path("data").path("token").asText();
+        String token = tokenFromCookie(loginResp);
         HttpResponse<String> me = apiGet("/api/auth/me", token);
         assertEquals(200, me.statusCode());
         JsonNode user = MAPPER.readTree(me.body()).path("data").path("user");
@@ -216,17 +272,35 @@ class PanelIntegrationTest {
     }
 
     @Test
+    void passwordChangeRejectsMissingFieldsAsBadRequest() throws Exception {
+        String token = login("ling", rootPw);
+        HttpRequest request = HttpRequest.newBuilder(
+                        URI.create("http://127.0.0.1:" + panelPort + "/api/auth/password"))
+                .header("X-LingConsole-Token", token)
+                .header("Content-Type", "application/json")
+                .PUT(HttpRequest.BodyPublishers.ofString("{}"))
+                .build();
+
+        HttpResponse<String> response = http.send(request, HttpResponse.BodyHandlers.ofString());
+
+        assertEquals(400, response.statusCode(), response.body());
+        assertTrue(response.body().contains("oldPassword"));
+    }
+
+    @Test
     void passwordChangeRevokesAllSessions() throws Exception {
+        Path firstPasswordFile = Path.of(panelConfig.firstLaunchPasswordFile());
+        Files.writeString(firstPasswordFile, "temporary initial password");
         
         String body = MAPPER.writeValueAsString(java.util.Map.of("username", "ling", "password", rootPw));
-        String tokenA = MAPPER.readTree(http.send(HttpRequest.newBuilder(URI.create("http://127.0.0.1:" + panelPort + "/api/auth/login"))
+        HttpResponse<String> loginA = http.send(HttpRequest.newBuilder(URI.create("http://127.0.0.1:" + panelPort + "/api/auth/login"))
                 .header("Content-Type", "application/json")
-                .POST(HttpRequest.BodyPublishers.ofString(body)).build(), HttpResponse.BodyHandlers.ofString()).body())
-                .path("data").path("token").asText();
-        String tokenB = MAPPER.readTree(http.send(HttpRequest.newBuilder(URI.create("http://127.0.0.1:" + panelPort + "/api/auth/login"))
+                .POST(HttpRequest.BodyPublishers.ofString(body)).build(), HttpResponse.BodyHandlers.ofString());
+        String tokenA = tokenFromCookie(loginA);
+        HttpResponse<String> loginB = http.send(HttpRequest.newBuilder(URI.create("http://127.0.0.1:" + panelPort + "/api/auth/login"))
                 .header("Content-Type", "application/json")
-                .POST(HttpRequest.BodyPublishers.ofString(body)).build(), HttpResponse.BodyHandlers.ofString()).body())
-                .path("data").path("token").asText();
+                .POST(HttpRequest.BodyPublishers.ofString(body)).build(), HttpResponse.BodyHandlers.ofString());
+        String tokenB = tokenFromCookie(loginB);
 
         
         String changeBody = MAPPER.writeValueAsString(java.util.Map.of(
@@ -238,6 +312,7 @@ class PanelIntegrationTest {
                 .build();
         HttpResponse<String> change = http.send(changeReq, HttpResponse.BodyHandlers.ofString());
         assertEquals(200, change.statusCode(), change.body());
+        assertFalse(Files.exists(firstPasswordFile), "root 改密后应删除首次密码文件");
 
         
         assertEquals(401, apiGet("/api/auth/me", tokenA).statusCode());
@@ -246,10 +321,10 @@ class PanelIntegrationTest {
         
         String newLoginBody = MAPPER.writeValueAsString(java.util.Map.of(
                 "username", "ling", "password", "new-root-pass-123"));
-        String newToken = MAPPER.readTree(http.send(HttpRequest.newBuilder(URI.create("http://127.0.0.1:" + panelPort + "/api/auth/login"))
+        HttpResponse<String> newLogin = http.send(HttpRequest.newBuilder(URI.create("http://127.0.0.1:" + panelPort + "/api/auth/login"))
                 .header("Content-Type", "application/json")
-                .POST(HttpRequest.BodyPublishers.ofString(newLoginBody)).build(), HttpResponse.BodyHandlers.ofString()).body())
-                .path("data").path("token").asText();
+                .POST(HttpRequest.BodyPublishers.ofString(newLoginBody)).build(), HttpResponse.BodyHandlers.ofString());
+        String newToken = tokenFromCookie(newLogin);
         String restoreBody = MAPPER.writeValueAsString(java.util.Map.of(
                 "oldPassword", "new-root-pass-123", "newPassword", rootPw));
         HttpRequest restoreReq = HttpRequest.newBuilder(URI.create("http://127.0.0.1:" + panelPort + "/api/auth/password"))
@@ -309,7 +384,8 @@ class PanelIntegrationTest {
 
         
         HttpResponse<String> list = apiGet("/api/nodes", token);
-        assertEquals(403, list.statusCode());
+        assertEquals(200, list.statusCode());
+        assertEquals(0, MAPPER.readTree(list.body()).path("data").size());
 
         
         String body = "{\"name\":\"evil\",\"url\":\"ws://127.0.0.1:9999\",\"key\":\"x\"}";
@@ -392,6 +468,8 @@ class PanelIntegrationTest {
                 assertEquals(429, resp.statusCode(), "第 6 次应被锁定为 429");
             }
         }
+        // All integration tests share localhost; do not leak this one-second IP rate window.
+        Thread.sleep(1_050);
     }
 
     @Test
@@ -464,6 +542,17 @@ class PanelIntegrationTest {
         JsonNode me = MAPPER.readTree(apiGet("/api/auth/me", userToken).body()).path("data");
         assertTrue(me.path("permissions").toString().contains("lingconsole.system.status"));
         assertTrue(me.path("permissions").toString().contains("lingconsole.app.advanced"));
+
+        HttpRequest updateGroup = HttpRequest.newBuilder(URI.create("http://127.0.0.1:" + panelPort
+                        + "/api/permission-groups/" + groupId))
+                .header("X-LingConsole-Token", token)
+                .header("Content-Type", "application/json")
+                .PUT(HttpRequest.BodyPublishers.ofString(
+                        "{\"name\":\"test-ops\",\"permissions\":[\"lingconsole.user.banned\"]}"))
+                .build();
+        assertEquals(200, http.send(updateGroup, HttpResponse.BodyHandlers.ofString()).statusCode());
+        assertEquals(401, apiGet("/api/auth/me", userToken).statusCode(),
+                "权限组或封禁状态变化后既有会话应立即撤销");
     }
 
     @Test

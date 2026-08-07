@@ -26,34 +26,14 @@ import java.util.Map;
 
 
 public interface ConfigService {
-
-    
     void define(String key, ConfigType type, String label, String description, String defaultValue);
-
-    
     void defineSelect(String key, String label, String description, String defaultValue, List<String> options);
-
-    
     String getString(String key, String def);
-
-    
     int getInt(String key, int def);
-
-    
     boolean getBoolean(String key, boolean def);
-
-    
     List<ConfigEntry> entries();
-
-    
     Map<String, String> values();
-
-    
     Map<String, Object> panelConfig();
-
-    
     Map<String, Object> daemonConfig();
-
-    
     Path dataDir();
 }

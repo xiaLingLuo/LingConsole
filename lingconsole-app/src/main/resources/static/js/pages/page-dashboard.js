@@ -140,34 +140,68 @@
         });
     }
 
+    function renderUserLogs(logs) {
+        const tbody = document.getElementById("user-logs-tbody");
+        if (!tbody) return;
+        if (!logs || logs.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="4" class="lc-table__empty">暂无操作记录</td></tr>';
+            return;
+        }
+        tbody.innerHTML = logs.map(function (log) {
+            return '<tr>' +
+                '<td>' + window.app.formatTime(log.createdAt) + '</td>' +
+                '<td>' + escapeHtml(log.action || "--") + '</td>' +
+                '<td>' + escapeHtml(log.target || "--") + '</td>' +
+                '<td>' + escapeHtml(log.detail || "--") + '</td>' +
+                '</tr>';
+        }).join("");
+    }
+
+    function applyMode(data) {
+        const admin = document.getElementById("admin-dashboard");
+        const userDash = document.getElementById("user-dashboard");
+        const noneHint = document.getElementById("no-permission-hint");
+        const mode = data && data.mode;
+        if (admin) admin.style.display = (mode === "admin") ? "" : "none";
+        if (userDash) userDash.style.display = (mode === "user") ? "" : "none";
+        if (noneHint) noneHint.style.display = (mode === "none") ? "" : "none";
+        if (mode === "user") {
+            renderUserLogs(data.logs || []);
+        }
+        if (mode === "admin") {
+            renderStats(data);
+        }
+    }
+
+    function loadStats() {
+        return API.get("/dashboard/stats").then(function (data) {
+            applyMode(data);
+            return data;
+        }).catch(function () {
+            return null;
+        });
+    }
+
     document.addEventListener("DOMContentLoaded", function () {
         initChart();
-        setInterval(function () {
-            API.get("/dashboard/stats").then(function (data) {
-                renderStats(data);
-            }).catch(function () {  });
-        }, 5000);
+        setInterval(loadStats, 5000);
     });
 
-
-    API.get("/dashboard/stats").then(function (data) {
-        renderStats(data);
-        renderNodes(data.nodesStatus || []);
-    }).catch(function (e) {
-        console.error(e);
+    loadStats().then(function (data) {
+        if (data && data.mode === "admin") {
+            renderNodes(data.nodesStatus || []);
+        }
     });
-
 
     API.get("/dashboard/nodes-status").then(function (nodes) {
         renderNodes(nodes);
     }).catch(function () {  });
 
-
     window.PanelSocket.connect(function (socket) {
         socket.emit("dashboard:stats");
         socket.on("dashboard:stats", function (data) {
             if (data && data.status === 200 && data.data) {
-                renderStats(data.data);
+                applyMode(data.data);
             }
         });
     });

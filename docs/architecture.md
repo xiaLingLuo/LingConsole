@@ -1,51 +1,57 @@
 # 架构与安全
 
-## 架构
+## 组件
 
-```
-┌───────────────────────────┐          ┌──────────────────────────┐
-│   Panel (端口 55600)      │          │   Daemon (端口 55700)    │
-│   ├─ / 页面 (Thymeleaf)   │  HTTP+WS │   ├─ /consoleapi REST    │
-│   ├─ /api REST            │◀────────▶│   ├─ /socket.io /daemon  │
-│   ├─ /socket.io /panel    │  Key认证 │   └─ /socket.io /stream  │
-│   └─ /static 静态资源     │          │    (文件/应用/终端/监控) │
-└───────────────────────────┘          └──────────────────────────┘
-        │                                     │
-  浏览器直接访问                       可对接多个远端 Daemon 节点
+```text
+Browser
+   | HTTP/WS
+Panel :55600
+   | Daemon Key over HTTP/WS
+   +---- Daemon :55700 ---- files, processes, PTY, monitor
+   +---- Remote Daemon
 ```
 
-- **Panel**：Web 界面 + 业务 API，管理节点、用户、权限、日志、插件
-- **Daemon**：底层守护进程，执行文件操作、应用进程管理、PTY 终端、系统监控
-- 节点通过完整 URL（`ws://` / `wss://`）与 Daemon Key 认证对接
-- 三种运行模式：Panel+Daemon（默认）/ only-Daemon（`--webui false`）/ only-Panel（`--damon false`）
+| Gradle 模块          | 职责                                        |
+|----------------------|---------------------------------------------|
+| `lingconsole-api`    | 稳定的插件接口                              |
+| `lingconsole-common` | 配置、Socket 协议、权限、插件加载等共享实现 |
+| `lingconsole-daemon` | 文件、应用进程、终端、归档和监控            |
+| `lingconsole-app`    | 启动器、Panel、数据库、WebUI 和插件上下文   |
 
-## 模块结构
+默认模式在同一 JVM 内启动 Panel 和本地 Daemon。`--webui false` 仅启动 Daemon，`--damon false` 仅启动 Panel。
 
-| 模块                 | 说明            |
-|----------------------|-----------------|
-| `lingconsole-api`    | 插件 API        |
-| `lingconsole-common` | 共享库          |
-| `lingconsole-daemon` | Daemon 守护进程 |
-| `lingconsole-app`    | 主应用          |
+## 认证与授权
 
-## 技术栈
+Panel 密码使用 Argon2id。会话令牌存储于 SQLite，通过 Cookie 或 `X-LingConsole-Token` 使用；封禁、改密和登出会撤销令牌并关闭索引到该令牌或用户的 Socket。
 
-Java 25 · Javalin 7.2.2 · Thymeleaf · SQLite (HikariCP) · Socket.IO · Argon2id · TOML · OSHI · pty4j · xterm.js · ECharts · CodeMirror
+普通用户权限来自权限组，root 固定为 `*`。权限匹配支持精确键、单段 `*` 和后缀 `.*`。应用写/高级权限只隐含相同应用的读取权限，不隐含文件或终端。
 
-## 安全模型
+Daemon 使用 Key 作为机器控制面凭据。REST 通过 `X-LingConsole-Key`，控制 Socket 在 `auth` 事件中提交 Key。认证失败、公开接口、API、敏感操作、Socket 消息和连接均有限速或容量限制。可选 IP 白名单同时约束 REST 与 Socket。
 
-- **密码哈希**：Argon2id，无明文存储
-- **会话**：Cookie 带 `HttpOnly` + `SameSite=Strict`（HTTPS 下加 `Secure`）
-- **节点 Key**：仅存于服务器配置文件，WebUI 不回显（任何角色都只能修改、不能查看）
-- **权限体系**：权限组系统——普通用户权限 100% 来自所分配的权限组（无角色体系）；权限键按**节点/应用细分**（`lingconsole.node.read.<节点>`、`lingconsole.app.write.<节点>.<应用>` 等）；`permission.assign` 控制权限分配；`lingconsole.user.banned` 权限节点用于封禁
-- **应用访问**：由应用权限节点（`lingconsole.app.*.<节点>.<应用>`）控制，无独立应用范围设置
-- **Daemon 认证**：仅接受 `X-LingConsole-Key` 请求头
-- **命令执行**：`ProcessBuilder` 直接传参，无 shell 注入
-- **路径穿越**：应用沙箱 `PathUtil.sanitize` 防护
-- **插件路由**：默认受 `permission.assign` 保护，`PUBLIC="*"` 显式放行
+## Web 安全
 
-> ⚠ LingConsole 是服务器底层管理程序，默认以 root 运行并具备完整能力。**请勿将面板端口暴露到公网**，建议置于内网或配合防火墙/TLS。
+- 非 GET/HEAD Panel API 校验 `Origin`；可配置额外 Origin 和受信任代理 Host。
+- Cookie 为 `HttpOnly`、`SameSite=Strict`。
+- 响应设置 CSP、`X-Frame-Options: DENY`、`nosniff` 和 Referrer Policy。
+- 节点 Key 通过 JSON `WRITE_ONLY` 防止回显。
+- 登录正文、密码哈希并发、终端票据和下载均有限额。
 
-## Treasure 上报
+## 文件与进程安全
 
-Treasure 会定期向 `https://treasure.xzrui.cn` 上报**匿名统计信息**。其作为插件安装，可在插件配置文件中关闭。
+节点文件管理的全文件能力是产品设计。应用文件使用规范化路径并默认逐级拒绝符号链接和 Windows reparse/junction；保护关闭后不应把应用目录视为隔离边界。
+
+目录列表限制为 10000 项，文本在线读取限制为 100 KiB。归档在执行前后检查路径、类型、条目数、展开大小、深度和可用空间，并在临时目录解压后合并。下载和重型文件任务有并发与超时限制。
+
+应用通过参数数组启动，可配置运行用户。每个进程的日志使用环形行缓冲，超长无换行输出按 64 KiB 字符切段。`exec` 接口使用 shell 执行管理员指定命令并缓存结果，这是受信任管理面的预期能力。
+
+## 插件边界
+
+插件 JAR 由管理员放入 `addons/`，在 LingConsole JVM 内拥有代码执行能力，不是沙箱。Panel HTTP 路由默认要求 `lingconsole.permission.assign`，Panel Socket 事件必须声明权限。Daemon 扩展只通过 `registerDaemonRoute` 暴露并由 Daemon Key 保护；Panel Socket 事件不会自动挂载到 Daemon Socket。
+
+插件反向代理可访问插件指定的后端，属于可信插件能力。默认不转发 Cookie、Authorization、Daemon Key 或 hop-by-hop 请求头；敏感头必须显式列入白名单。
+
+## 部署边界
+
+系统支持受信任内网中的 HTTP/WS，但明文无法抵御同网段窃听、篡改或凭据劫持。公网、跨机房或不受信任网络必须使用 HTTPS/WSS 反向代理、防火墙和访问控制。默认监听 `0.0.0.0`，部署者应按拓扑收紧。
+
+首次密码可能进入服务日志或 journal，需限制读取和保留范围并立即改密。应用进程不是不受信任代码沙箱；强隔离应由 Docker 等容器提供。

@@ -36,7 +36,6 @@ import java.util.Map;
 public class AddonsController {
 
     private final AddonManager addonManager;
-
     public AddonsController(AddonManager addonManager) {
         this.addonManager = addonManager;
     }
@@ -84,6 +83,7 @@ public class AddonsController {
     private void updateConfig(Context ctx) {
         PermissionMiddleware.requirePermission(ctx, Permissions.PERMISSION_ASSIGN);
         String name = ctx.pathParam("name");
+        //noinspection resource
         AddonContextImpl impl = contextImpl(name);
         if (impl == null) {
             ctx.status(404);

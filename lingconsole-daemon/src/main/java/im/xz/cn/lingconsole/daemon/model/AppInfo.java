@@ -44,6 +44,7 @@ public class AppInfo {
     private String encoding;
     private String ptyType;
     private Map<String, String> environment;
+    private boolean protectAppFilesFromSymlinkEscape;
 
     public String getId() {
         return id;
@@ -187,5 +188,13 @@ public class AppInfo {
 
     public void setEnvironment(Map<String, String> environment) {
         this.environment = environment;
+    }
+
+    public boolean isProtectAppFilesFromSymlinkEscape() {
+        return protectAppFilesFromSymlinkEscape;
+    }
+
+    public void setProtectAppFilesFromSymlinkEscape(boolean protectAppFilesFromSymlinkEscape) {
+        this.protectAppFilesFromSymlinkEscape = protectAppFilesFromSymlinkEscape;
     }
 }

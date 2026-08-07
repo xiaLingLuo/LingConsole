@@ -22,10 +22,6 @@ import java.util.Map;
 
 
 public interface UserService {
-
-    
     List<Map<String, Object>> listUsers();
-
-    
     Map<String, Object> getUser(String id);
 }

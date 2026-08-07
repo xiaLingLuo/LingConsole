@@ -42,6 +42,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.net.URLDecoder;
 import java.nio.charset.StandardCharsets;
+import java.time.Duration;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -99,6 +100,13 @@ public class DaemonApp {
     
     private final im.xz.cn.lingconsole.common.addon.AddonSocketRegistry addonSocketRegistry;
 
+    
+    private final boolean whiteListEnabled;
+    private final List<String> whiteListIps;
+    private final DaemonRateLimiter rateLimiter = new DaemonRateLimiter();
+    private final FileTaskLimiter fileTaskLimiter;
+    private final DownloadLimiter downloadLimiter;
+
     private Javalin javalin;
     private SocketIOServer socketIOServer;
     private AppManager appManager;
@@ -130,7 +138,15 @@ public class DaemonApp {
         this.config = config;
         this.authManager = new AuthManager(config.key());
         this.addonManager = addonManager;
-        this.addonSocketRegistry = addonSocketRegistry;
+        this.addonSocketRegistry = addonSocketRegistry == null
+                ? new im.xz.cn.lingconsole.common.addon.AddonSocketRegistry()
+                : addonSocketRegistry;
+        this.whiteListEnabled = config.whiteListEnabled();
+        this.whiteListIps = config.whiteListIps() == null ? List.of() : List.copyOf(config.whiteListIps());
+        this.fileTaskLimiter = new FileTaskLimiter(config.maxFileTasks());
+        this.downloadLimiter = new DownloadLimiter(config.maxConcurrentDownloads(),
+                Duration.ofSeconds(config.downloadIdleTimeoutSeconds()),
+                Duration.ofSeconds(config.downloadMaxDurationSeconds()));
     }
 
     public AuthManager authManager() {
@@ -159,21 +175,29 @@ public class DaemonApp {
     }
 
     public void start() {
-        socketIOServer = new SocketIOServer();
-        appManager = new AppManager(config.defaultAppPath());
+        socketIOServer = new SocketIOServer()
+                .setAuthenticationTimeout(Duration.ofSeconds(config.authTimeout()))
+                .setMaxTextMessageBytes(config.socketMaxTextMessageBytes())
+                .setMaxBinaryMessageBytes(config.socketMaxBinaryMessageBytes())
+                .setMaxAggregatedMessageBytes(config.socketMaxAggregatedMessageBytes())
+                .setMaxUnauthenticatedConnectionsPerIp(config.socketMaxUnauthenticatedConnectionsPerIp())
+                .setMaxConnections(config.socketMaxConnections())
+                .setEventRateLimit(config.socketMaxEventsPerSession(),
+                        Duration.ofSeconds(config.socketEventRateWindowSeconds()));
+        appManager = new AppManager(config.defaultAppPath(), config.outputBufferSize(),
+                config.softShutdownEnabled(), config.softShutdownWaitSeconds());
         terminalService = new TerminalService(config.shellMode());
         passportManager = new PassportManager();
         fileSystemService = new FileSystemService();
         monitorService = new MonitorService();
         socketIOServer.onDisconnect(sid -> {
+            authenticatedSessions.remove(sid);
             TerminalService.TerminalSession session = streamBindings.remove(sid);
             if (session != null) {
                 terminalService.remove(session.id());
             }
         });
         registerSocketEvents();
-        im.xz.cn.lingconsole.common.addon.AddonSocketSupport.apply(socketIOServer, addonSocketRegistry,
-                conn -> isAuthenticated(conn.sessionId()));
         appManager.start();
 
         terminalCleanupExecutor.scheduleAtFixedRate(() -> {
@@ -195,19 +219,50 @@ public class DaemonApp {
 
             
             cfg.routes.before(prefix + "/*", ctx -> {
+                String ip = ctx.ip();
+                if (!isIpAllowed(ip)) {
+                    throw ApiExceptionHolder.forbidden();
+                }
                 String path = ctx.path();
                 if (path.endsWith("/auth/check") || path.endsWith("/health")) {
+                    
+                    if (!rateLimiter.allowPublic(ip)) {
+                        throw ApiExceptionHolder.tooManyRequests();
+                    }
                     return;
                 }
-                
                 String key = ctx.header("X-LingConsole-Key");
-                if (!authManager.verify(key)) {
+                DaemonRateLimiter.AuthResult authResult = rateLimiter.authenticate(ip,
+                        config.successUnlockOnceEnabled(), () -> authManager.verify(key));
+                if (authResult == DaemonRateLimiter.AuthResult.LOCKED) {
+                    throw ApiExceptionHolder.tooManyRequests();
+                }
+                if (authResult == DaemonRateLimiter.AuthResult.INVALID) {
                     throw ApiExceptionHolder.unauthorized();
+                }
+
+                if (!rateLimiter.allowApi(ip)) {
+                    throw ApiExceptionHolder.tooManyRequests();
+                }
+                String p = ctx.path();
+                if (p.endsWith("/terminal/passport")
+                        || p.contains("/files/7zip/")
+                        || p.contains("/files/archive/")) {
+                    if (!rateLimiter.allowSensitive(ip)) {
+                        throw ApiExceptionHolder.tooManyRequests();
+                    }
                 }
             });
 
             registerRestApi(cfg.routes);
             socketIOServer.register(cfg.routes);
+
+            
+            cfg.routes.before("/", ctx -> {
+                if (!rateLimiter.allowPublic(ctx.ip())) {
+                    throw ApiExceptionHolder.tooManyRequests();
+                }
+            });
 
             
             cfg.routes.get("/", ctx -> ctx.html(ROOT_PAGE));
@@ -222,6 +277,14 @@ public class DaemonApp {
                 ctx.status(401);
                 ctx.json(ApiResponse.error(401, "未认证: Key 无效"));
             });
+            cfg.routes.exception(ForbiddenException.class, (e, ctx) -> {
+                ctx.status(403);
+                ctx.json(ApiResponse.error(403, "IP 不在白名单内"));
+            });
+            cfg.routes.exception(TooManyRequestsException.class, (e, ctx) -> {
+                ctx.status(429);
+                ctx.json(ApiResponse.error(429, "请求过于频繁, 请稍后重试"));
+            });
             cfg.routes.exception(Exception.class, (e, ctx) -> {
                 log.error("Daemon REST 错误: {}", ctx.path(), e);
                 ctx.status(500);
@@ -235,6 +298,7 @@ public class DaemonApp {
 
     public void stop() {
         terminalCleanupExecutor.shutdownNow();
+        authenticatedSessions.clear();
         if (socketIOServer != null) {
             socketIOServer.stop();
         }
@@ -254,12 +318,21 @@ public class DaemonApp {
     }
 
     
+    private boolean isIpAllowed(String ip) {
+        if (!whiteListEnabled) {
+            return true;
+        }
+        return ip != null && whiteListIps.contains(ip);
+    }
+
+    
     
     
 
     private void registerSocketEvents() {
         
         socketIOServer.registerNamespace(Constants.DAMON_NS);
+        socketIOServer.allowUnauthenticatedEvent(Constants.DAMON_NS, "auth");
         socketIOServer.on(Constants.DAMON_NS, "auth", (conn, event, data) -> handleAuth(conn, data));
         socketIOServer.on(Constants.DAMON_NS, "system:info", (conn, event, data) -> {
             if (!isAuthenticated(conn.sessionId())) {
@@ -340,16 +413,23 @@ public class DaemonApp {
     
     
 
-    private void handleStreamConnect(SocketIOConnection conn, String query) {
+    private im.xz.cn.lingconsole.common.socketio.SocketIOConnectResult handleStreamConnect(
+            SocketIOConnection conn, String query) {
+        if (!isIpAllowed(conn.remoteIp())) {
+            conn.emit("auth", Map.of("status", 403, "message", "IP 不在白名单内"));
+            conn.close();
+            return im.xz.cn.lingconsole.common.socketio.SocketIOConnectResult.reject("IP not allowed");
+        }
         String passport = extractQueryParam(query, "passport");
         String terminalId = passportManager.consume(passport);
         TerminalService.TerminalSession session = terminalId == null ? null : terminalService.get(terminalId);
         if (session == null) {
             conn.emit("auth", Map.of("status", 401, "message", "票据无效或已过期"));
             conn.close();
-            return;
+            return im.xz.cn.lingconsole.common.socketio.SocketIOConnectResult.reject("Invalid passport");
         }
         streamBindings.put(conn.sessionId(), session);
+        conn.markAuthenticated();
         session.setOutputListener(new TerminalService.OutputListener() {
             @Override
             public void onOutput(String data) {
@@ -378,6 +458,7 @@ public class DaemonApp {
             conn.emit("terminal:output", Map.of("data", String.join("\r\n", recent) + "\r\n"));
         }
         log.info("终端流已连接: sid={}, {}", conn.sessionId(), session.description());
+        return im.xz.cn.lingconsole.common.socketio.SocketIOConnectResult.accept();
     }
 
     private void handleStreamInput(SocketIOConnection conn, String event, Object data) {
@@ -458,7 +539,8 @@ public class DaemonApp {
         try {
             AppInfo info = appManager.update(req.id, req.name, req.command, req.type,
                     req.autoStart, req.autoRestart, req.maxRestartCount, req.args, req.environment,
-                    req.workDir, req.encoding, req.ptyType, req.runAsUser);
+                    req.workDir, req.encoding, req.ptyType, req.runAsUser,
+                    req.protectAppFilesFromSymlinkEscape);
             conn.emit("app:update", info != null
                     ? SocketIOResponse.ok(data, info)
                     : SocketIOResponse.error(data, 404, "应用不存在"));
@@ -500,6 +582,9 @@ public class DaemonApp {
                 req.encoding = inner.path("encoding").asText(null);
                 req.ptyType = inner.path("ptyType").asText(null);
                 req.runAsUser = inner.path("runAsUser").asText(null);
+                if (inner.has("protectAppFilesFromSymlinkEscape")) {
+                    req.protectAppFilesFromSymlinkEscape = inner.path("protectAppFilesFromSymlinkEscape").asBoolean();
+                }
                 if (inner.path("args").isArray()) {
                     List<String> args = new java.util.ArrayList<>();
                     inner.path("args").forEach(a -> args.add(a.asText()));
@@ -524,15 +609,30 @@ public class DaemonApp {
     }
 
     private void handleAuth(SocketIOConnection conn, Object data) {
+        String ip = conn.remoteIp();
+        if (!isIpAllowed(ip)) {
+            conn.emit("auth", SocketIOResponse.error(data, 403, "IP 不在白名单内"));
+            conn.close();
+            return;
+        }
         String key = SocketIOResponse.extract(data, "key");
-        if (authManager.verify(key)) {
+        DaemonRateLimiter.AuthResult authResult = rateLimiter.authenticate(ip,
+                config.successUnlockOnceEnabled(), () -> authManager.verify(key));
+        if (authResult == DaemonRateLimiter.AuthResult.SUCCESS) {
             authenticatedSessions.add(conn.sessionId());
+            conn.markAuthenticated();
             conn.emit("auth", SocketIOResponse.ok(data, Map.of("sid", conn.sessionId())));
             log.info("Daemon 控制面认证成功: sid={}", conn.sessionId());
             return;
         }
+        authenticatedSessions.remove(conn.sessionId());
+        if (authResult == DaemonRateLimiter.AuthResult.LOCKED) {
+            conn.emit("auth", SocketIOResponse.error(data, 429, "尝试次数过多, 请稍后重试"));
+            conn.close();
+            return;
+        }
         conn.emit("auth", SocketIOResponse.error(data, 401, "Key 无效"));
-        log.warn("Daemon 控制面认证失败: sid={}", conn.sessionId());
+        log.warn("Daemon 控制面认证失败: sid={}, ip={}", conn.sessionId(), ip);
     }
 
     
@@ -597,7 +697,8 @@ public class DaemonApp {
             AppRequestRest req = ctx.bodyAsClass(AppRequestRest.class);
             AppInfo info = appManager.update(ctx.pathParam("id"), req.name, req.command, req.type,
                     req.autoStart, req.autoRestart, req.maxRestartCount, req.args, req.environment,
-                    req.workDir, req.encoding, req.ptyType, req.runAsUser);
+                    req.workDir, req.encoding, req.ptyType, req.runAsUser,
+                    req.protectAppFilesFromSymlinkEscape);
             if (info == null) {
                 ctx.status(404);
                 ctx.json(ApiResponse.error(404, "应用不存在"));
@@ -686,7 +787,7 @@ public class DaemonApp {
             }
         });
 
-        routes.post(prefix + "/files/archive/compress", ctx -> {
+        routes.post(prefix + "/files/archive/compress", fileTask(ctx -> {
             try {
                 ArchiveRequest req = ctx.bodyAsClass(ArchiveRequest.class);
                 if (req.files == null || req.files.isEmpty() || req.archive == null || req.archive.isBlank()) {
@@ -700,18 +801,17 @@ public class DaemonApp {
                     ctx.json(ApiResponse.error(400, "7zip未安装"));
                     return;
                 }
-                StringBuilder sb = new StringBuilder(bin).append(" a -y ").append(quote(req.archive));
-                for (String f : req.files) {
-                    sb.append(' ').append(quote(f));
-                }
-                ctx.json(ApiResponse.ok(runShell(sb.toString(), 120000)));
+                List<java.nio.file.Path> inputs = req.files.stream()
+                        .map(FileSystemService::resolvePath).toList();
+                java.nio.file.Path archive = FileSystemService.resolvePath(req.archive);
+                ctx.json(ApiResponse.ok(compressArchive(bin, archive, inputs)));
             } catch (Exception e) {
                 ctx.status(400);
                 ctx.json(ApiResponse.error(400, ErrorMessageUtil.friendly(e)));
             }
-        });
+        }));
 
-        routes.post(prefix + "/files/archive/extract", ctx -> {
+        routes.post(prefix + "/files/archive/extract", fileTask(ctx -> {
             try {
                 ArchiveRequest req = ctx.bodyAsClass(ArchiveRequest.class);
                 if (req.archive == null || req.archive.isBlank() || req.dest == null || req.dest.isBlank()) {
@@ -725,13 +825,14 @@ public class DaemonApp {
                     ctx.json(ApiResponse.error(400, "7zip未安装"));
                     return;
                 }
-                String cmd = bin + " x -y " + quote(req.archive) + " -o" + quote(req.dest);
-                ctx.json(ApiResponse.ok(runShell(cmd, 120000)));
+                java.nio.file.Path archive = FileSystemService.resolvePath(req.archive);
+                java.nio.file.Path destination = FileSystemService.resolvePath(req.dest);
+                ctx.json(ApiResponse.ok(extractArchive(bin, archive, destination)));
             } catch (Exception e) {
                 ctx.status(400);
                 ctx.json(ApiResponse.error(400, ErrorMessageUtil.friendly(e)));
             }
-        });
+        }));
 
         
         routes.post(prefix + "/exec", ctx -> {
@@ -869,7 +970,7 @@ public class DaemonApp {
         });
 
         
-        routes.post(prefix + "/files/upload", ctx -> {
+        routes.post(prefix + "/files/upload", fileTask(ctx -> {
             try {
                 String path = ctx.queryParam("path");
                 String filename = ctx.queryParam("filename");
@@ -893,10 +994,10 @@ public class DaemonApp {
                 ctx.status(400);
                 ctx.json(ApiResponse.error(400, ErrorMessageUtil.friendly(e)));
             }
-        });
+        }));
 
         
-        routes.post(prefix + "/files/upload-raw", ctx -> {
+        routes.post(prefix + "/files/upload-raw", fileTask(ctx -> {
             try {
                 String path = ctx.queryParam("path");
                 String filename = ctx.queryParam("filename");
@@ -918,7 +1019,7 @@ public class DaemonApp {
                 ctx.status(400);
                 ctx.json(ApiResponse.error(400, ErrorMessageUtil.friendly(e)));
             }
-        });
+        }));
 
         
         routes.get(prefix + "/files/download", ctx -> {
@@ -932,7 +1033,9 @@ public class DaemonApp {
                 ctx.contentType("application/octet-stream");
                 ctx.header("Content-Disposition", "attachment; filename=\""
                         + im.xz.cn.lingconsole.common.util.PathUtil.safeFileName(file) + "\"");
-                ctx.result(java.nio.file.Files.newInputStream(file));
+                ctx.header("X-Ling-File-Size", String.valueOf(java.nio.file.Files.size(file)));
+                ctx.header("X-Ling-File-Name", im.xz.cn.lingconsole.common.util.PathUtil.safeFileName(file));
+                setDownloadResult(ctx, () -> java.nio.file.Files.newInputStream(file));
             } catch (Exception e) {
                 ctx.status(400);
                 ctx.json(ApiResponse.error(400, ErrorMessageUtil.friendly(e)));
@@ -950,7 +1053,7 @@ public class DaemonApp {
             }
         });
 
-        routes.post(prefix + "/files/copy", ctx -> {
+        routes.post(prefix + "/files/copy", fileTask(ctx -> {
             try {
                 fileSystemService.copy(ctx.queryParam("path"), ctx.queryParam("dest"));
                 ctx.json(ApiResponse.ok());
@@ -958,7 +1061,7 @@ public class DaemonApp {
                 ctx.status(400);
                 ctx.json(ApiResponse.error(400, ErrorMessageUtil.friendly(e)));
             }
-        });
+        }));
 
         
         routes.get(prefix + "/files/drives", ctx -> {
@@ -977,7 +1080,8 @@ public class DaemonApp {
         routes.get(prefix + "/apps/{id}/files/list", ctx -> {
             try {
                 String wd = requireAppWorkDir(ctx.pathParam("id"));
-                ctx.json(ApiResponse.ok(fileSystemService.listUnderRelative(wd, ctx.queryParam("path"))));
+                boolean protect = protectAppFiles(ctx.pathParam("id"));
+                ctx.json(ApiResponse.ok(fileSystemService.listUnderRelative(wd, ctx.queryParam("path"), protect)));
             } catch (Exception e) {
                 ctx.status(400);
                 ctx.json(ApiResponse.error(400, ErrorMessageUtil.friendly(e)));
@@ -987,7 +1091,8 @@ public class DaemonApp {
         routes.get(prefix + "/apps/{id}/files/read", ctx -> {
             try {
                 String wd = requireAppWorkDir(ctx.pathParam("id"));
-                ctx.json(ApiResponse.ok(Map.of("content", fileSystemService.readUnder(wd, ctx.queryParam("path")))));
+                boolean protect = protectAppFiles(ctx.pathParam("id"));
+                ctx.json(ApiResponse.ok(Map.of("content", fileSystemService.readUnder(wd, ctx.queryParam("path"), protect))));
             } catch (Exception e) {
                 ctx.status(400);
                 ctx.json(ApiResponse.error(400, ErrorMessageUtil.friendly(e)));
@@ -997,8 +1102,9 @@ public class DaemonApp {
         routes.post(prefix + "/apps/{id}/files/write", ctx -> {
             try {
                 String wd = requireAppWorkDir(ctx.pathParam("id"));
+                boolean protect = protectAppFiles(ctx.pathParam("id"));
                 WriteRequest req = ctx.bodyAsClass(WriteRequest.class);
-                fileSystemService.writeUnder(wd, req.path, req.content);
+                fileSystemService.writeUnder(wd, req.path, req.content, protect);
                 ctx.json(ApiResponse.ok());
             } catch (Exception e) {
                 ctx.status(400);
@@ -1009,7 +1115,7 @@ public class DaemonApp {
         routes.post(prefix + "/apps/{id}/files/mkdir", ctx -> {
             try {
                 String wd = requireAppWorkDir(ctx.pathParam("id"));
-                fileSystemService.mkdirUnder(wd, ctx.queryParam("path"));
+                fileSystemService.mkdirUnder(wd, ctx.queryParam("path"), protectAppFiles(ctx.pathParam("id")));
                 ctx.json(ApiResponse.ok());
             } catch (Exception e) {
                 ctx.status(400);
@@ -1020,7 +1126,8 @@ public class DaemonApp {
         routes.delete(prefix + "/apps/{id}/files", ctx -> {
             try {
                 String wd = requireAppWorkDir(ctx.pathParam("id"));
-                boolean deleted = fileSystemService.deleteUnder(wd, ctx.queryParam("path"));
+                boolean deleted = fileSystemService.deleteUnder(wd, ctx.queryParam("path"),
+                        protectAppFiles(ctx.pathParam("id")));
                 ctx.json(ApiResponse.ok(Map.of("deleted", deleted)));
             } catch (Exception e) {
                 ctx.status(400);
@@ -1028,9 +1135,10 @@ public class DaemonApp {
             }
         });
 
-        routes.post(prefix + "/apps/{id}/files/upload-raw", ctx -> {
+        routes.post(prefix + "/apps/{id}/files/upload-raw", fileTask(ctx -> {
             try {
                 String wd = requireAppWorkDir(ctx.pathParam("id"));
+                boolean protect = protectAppFiles(ctx.pathParam("id"));
                 String filename = ctx.queryParam("filename");
                 if (filename == null || filename.isBlank()) {
                     ctx.status(400);
@@ -1040,24 +1148,23 @@ public class DaemonApp {
                 validateFilename(filename);
                 String up = ctx.queryParam("path");
                 String rel = (up == null || up.isBlank()) ? filename : up + "/" + filename;
-                java.nio.file.Path target = FileSystemService.resolveSandboxed(wd, rel);
-                java.nio.file.Files.createDirectories(target.getParent());
                 try (InputStream in = ctx.bodyInputStream()) {
-                    java.nio.file.Files.copy(in, target,
-                            java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+                    fileSystemService.uploadUnder(wd, rel, in, protect);
                 }
+                java.nio.file.Path target = FileSystemService.resolveSandboxed(wd, rel, protect);
                 ctx.json(ApiResponse.ok(Map.of("path", target.toString())));
             } catch (Exception e) {
                 ctx.status(400);
                 ctx.json(ApiResponse.error(400, ErrorMessageUtil.friendly(e)));
             }
-        });
+        }));
 
         routes.get(prefix + "/apps/{id}/files/download", ctx -> {
             try {
                 String wd = requireAppWorkDir(ctx.pathParam("id"));
-                java.nio.file.Path file = FileSystemService.resolveSandboxed(wd, ctx.queryParam("path"));
-                if (!java.nio.file.Files.isRegularFile(file)) {
+                boolean protect = protectAppFiles(ctx.pathParam("id"));
+                java.nio.file.Path file = FileSystemService.resolveExistingSandboxed(wd, ctx.queryParam("path"), protect);
+                if (!java.nio.file.Files.isRegularFile(file, java.nio.file.LinkOption.NOFOLLOW_LINKS)) {
                     ctx.status(404);
                     ctx.json(ApiResponse.error(404, "文件不存在"));
                     return;
@@ -1065,7 +1172,10 @@ public class DaemonApp {
                 ctx.contentType("application/octet-stream");
                 ctx.header("Content-Disposition", "attachment; filename=\""
                         + im.xz.cn.lingconsole.common.util.PathUtil.safeFileName(file) + "\"");
-                ctx.result(java.nio.file.Files.newInputStream(file));
+                ctx.header("X-Ling-File-Size", String.valueOf(java.nio.file.Files.size(file)));
+                ctx.header("X-Ling-File-Name", im.xz.cn.lingconsole.common.util.PathUtil.safeFileName(file));
+                setDownloadResult(ctx,
+                        () -> fileSystemService.openDownloadUnder(wd, ctx.queryParam("path"), protect));
             } catch (Exception e) {
                 ctx.status(400);
                 ctx.json(ApiResponse.error(400, ErrorMessageUtil.friendly(e)));
@@ -1075,7 +1185,8 @@ public class DaemonApp {
         routes.post(prefix + "/apps/{id}/files/rename", ctx -> {
             try {
                 String wd = requireAppWorkDir(ctx.pathParam("id"));
-                fileSystemService.renameUnder(wd, ctx.queryParam("path"), ctx.queryParam("newName"));
+                fileSystemService.renameUnder(wd, ctx.queryParam("path"), ctx.queryParam("newName"),
+                        protectAppFiles(ctx.pathParam("id")));
                 ctx.json(ApiResponse.ok());
             } catch (Exception e) {
                 ctx.status(400);
@@ -1083,20 +1194,22 @@ public class DaemonApp {
             }
         });
 
-        routes.post(prefix + "/apps/{id}/files/copy", ctx -> {
+        routes.post(prefix + "/apps/{id}/files/copy", fileTask(ctx -> {
             try {
                 String wd = requireAppWorkDir(ctx.pathParam("id"));
-                fileSystemService.copyUnder(wd, ctx.queryParam("path"), ctx.queryParam("dest"));
+                fileSystemService.copyUnder(wd, ctx.queryParam("path"), ctx.queryParam("dest"),
+                        protectAppFiles(ctx.pathParam("id")));
                 ctx.json(ApiResponse.ok());
             } catch (Exception e) {
                 ctx.status(400);
                 ctx.json(ApiResponse.error(400, ErrorMessageUtil.friendly(e)));
             }
-        });
+        }));
 
-        routes.post(prefix + "/apps/{id}/files/archive/compress", ctx -> {
+        routes.post(prefix + "/apps/{id}/files/archive/compress", fileTask(ctx -> {
             try {
                 String wd = requireAppWorkDir(ctx.pathParam("id"));
+                boolean protect = protectAppFiles(ctx.pathParam("id"));
                 ArchiveRequest req = ctx.bodyAsClass(ArchiveRequest.class);
                 if (req.files == null || req.files.isEmpty() || req.archive == null || req.archive.isBlank()) {
                     ctx.status(400);
@@ -1109,21 +1222,28 @@ public class DaemonApp {
                     ctx.json(ApiResponse.error(400, "7zip未安装"));
                     return;
                 }
-                StringBuilder sb = new StringBuilder(bin).append(" a -y ")
-                        .append(quote(FileSystemService.resolveSandboxed(wd, req.archive).toString()));
-                for (String f : req.files) {
-                    sb.append(' ').append(quote(FileSystemService.resolveSandboxed(wd, f).toString()));
+                if (protect) {
+                    ctx.status(400);
+                    ctx.json(ApiResponse.error(400, "启用应用文件符号链接保护时不允许直接压缩归档"));
+                    return;
                 }
-                ctx.json(ApiResponse.ok(runShell(sb.toString(), 120000)));
+                List<java.nio.file.Path> inputs = new java.util.ArrayList<>();
+                for (String f : req.files) {
+                    java.nio.file.Path input = FileSystemService.resolveExistingSandboxed(wd, f, protect);
+                    inputs.add(input);
+                }
+                java.nio.file.Path archive = FileSystemService.resolveSandboxed(wd, req.archive, protect);
+                ctx.json(ApiResponse.ok(compressArchive(bin, archive, inputs)));
             } catch (Exception e) {
                 ctx.status(400);
                 ctx.json(ApiResponse.error(400, ErrorMessageUtil.friendly(e)));
             }
-        });
+        }));
 
-        routes.post(prefix + "/apps/{id}/files/archive/extract", ctx -> {
+        routes.post(prefix + "/apps/{id}/files/archive/extract", fileTask(ctx -> {
             try {
                 String wd = requireAppWorkDir(ctx.pathParam("id"));
+                boolean protect = protectAppFiles(ctx.pathParam("id"));
                 ArchiveRequest req = ctx.bodyAsClass(ArchiveRequest.class);
                 if (req.archive == null || req.archive.isBlank() || req.dest == null || req.dest.isBlank()) {
                     ctx.status(400);
@@ -1136,14 +1256,111 @@ public class DaemonApp {
                     ctx.json(ApiResponse.error(400, "7zip未安装"));
                     return;
                 }
-                String cmd = bin + " x -y " + quote(FileSystemService.resolveSandboxed(wd, req.archive).toString())
-                        + " -o" + quote(FileSystemService.resolveSandboxed(wd, req.dest).toString());
-                ctx.json(ApiResponse.ok(runShell(cmd, 120000)));
+                if (protect) {
+                    ctx.status(400);
+                    ctx.json(ApiResponse.error(400, "启用应用文件符号链接保护时不允许直接解压归档"));
+                    return;
+                }
+                java.nio.file.Path archive = FileSystemService.resolveExistingSandboxed(wd, req.archive, false);
+                java.nio.file.Path destination = FileSystemService.resolveSandboxed(wd, req.dest, false);
+                ctx.json(ApiResponse.ok(extractArchive(bin, archive, destination)));
             } catch (Exception e) {
                 ctx.status(400);
                 ctx.json(ApiResponse.error(400, ErrorMessageUtil.friendly(e)));
             }
-        });
+        }));
+    }
+
+    private io.javalin.http.Handler fileTask(io.javalin.http.Handler handler) {
+        return ctx -> {
+            if (!fileTaskLimiter.tryRun(() -> handler.handle(ctx))) {
+                ctx.status(429);
+                ctx.json(ApiResponse.error(429, "文件任务并发过多, 请稍后重试"));
+            }
+        };
+    }
+
+    private boolean setDownloadResult(io.javalin.http.Context ctx, InputStreamSupplier opener) throws IOException {
+        DownloadLimiter.Lease lease = downloadLimiter.tryAcquire();
+        if (lease == null) {
+            ctx.status(429);
+            ctx.json(ApiResponse.error(429, "在途下载并发过多, 请稍后重试"));
+            return false;
+        }
+        try {
+            ctx.result(lease.protect(opener.open()));
+            return true;
+        } catch (IOException | RuntimeException e) {
+            lease.close();
+            throw e;
+        }
+    }
+
+    @FunctionalInterface
+    private interface InputStreamSupplier {
+        InputStream open() throws IOException;
+    }
+
+    private ArchiveFileGuard.Limits archiveLimits(DaemonConfig.ArchivePolicy policy) {
+        return new ArchiveFileGuard.Limits(policy.maxEntries(), policy.maxTotalBytes(),
+                policy.maxTotalBytes(), 128);
+    }
+
+    private Map<String, Object> compressArchive(String bin, java.nio.file.Path archive,
+                                                 List<java.nio.file.Path> inputs) throws IOException {
+        DaemonConfig.ArchivePolicy policy = config.archiveCompress();
+        ArchiveFileGuard.scan(inputs, archiveLimits(policy));
+        java.nio.file.Path parent = archive.toAbsolutePath().normalize().getParent();
+        if (parent != null) {
+            java.nio.file.Files.createDirectories(parent);
+        }
+        List<String> command = new java.util.ArrayList<>(List.of(bin, "a", "-y", "-snl", "--",
+                archive.toString()));
+        inputs.stream().map(java.nio.file.Path::toString).forEach(command::add);
+        return ExternalProcessRunner.run(command, Duration.ofSeconds(policy.timeoutSeconds()), null).asMap();
+    }
+
+    private Map<String, Object> extractArchive(String bin, java.nio.file.Path archive,
+                                                 java.nio.file.Path destination) throws IOException {
+        DaemonConfig.ArchivePolicy policy = config.archiveExtract();
+        ArchiveFileGuard.Limits limits = archiveLimits(policy);
+        ArchiveFileGuard.checkArchiveFile(archive, Long.MAX_VALUE);
+        ExternalProcessRunner.Result listing = ExternalProcessRunner.run(
+                List.of(bin, "l", "-slt", "-ba", "--", archive.toString()),
+                Duration.ofSeconds(policy.timeoutSeconds()), null);
+        if (listing.timedOut() || listing.exitCode() != 0) {
+            throw new IOException("读取归档元数据失败: " + listing.stderr());
+        }
+        if (listing.outputTruncated()) {
+            throw new IOException("归档元数据输出超过安全限制");
+        }
+        ArchiveFileGuard.scanSevenZipMetadata(listing.stdout(), limits);
+        java.nio.file.Path parent = destination.toAbsolutePath().normalize().getParent();
+        if (parent == null) {
+            throw new IOException("解压目标没有父目录: " + destination);
+        }
+        java.nio.file.Files.createDirectories(parent);
+        java.nio.file.Path quotaRoot = parent.resolve(".ling-archive-tmp");
+        java.nio.file.Files.createDirectories(quotaRoot);
+        java.nio.file.Path temporary = java.nio.file.Files.createTempDirectory(quotaRoot, "extract-");
+        try {
+            ArchiveFileGuard.monitorExtracted(temporary, limits);
+            ExternalProcessRunner.Result result = ExternalProcessRunner.run(
+                    List.of(bin, "x", "-y", "-snl", "-o" + temporary, "--", archive.toString()),
+                    Duration.ofSeconds(policy.timeoutSeconds()),
+                    () -> ArchiveFileGuard.monitorExtracted(temporary, limits));
+            if (result.exitCode() == 0) {
+                ArchiveFileGuard.monitorExtracted(temporary, limits);
+                ArchiveFileGuard.mergeExtracted(temporary, destination);
+            }
+            return result.asMap();
+        } finally {
+            ArchiveFileGuard.deleteTree(temporary);
+            try {
+                java.nio.file.Files.deleteIfExists(quotaRoot);
+            } catch (java.nio.file.DirectoryNotEmptyException ignored) {
+            }
+        }
     }
 
     private Map<String, Object> runShell(String command, long timeoutMs) {
@@ -1229,6 +1446,10 @@ public class DaemonApp {
         return wd;
     }
 
+    private boolean protectAppFiles(String appId) {
+        return appManager.protectAppFilesFromSymlinkEscape(appId);
+    }
+
     
     
     
@@ -1292,6 +1513,7 @@ public class DaemonApp {
         String encoding;
         String ptyType;
         String runAsUser;
+        Boolean protectAppFilesFromSymlinkEscape;
     }
 
     
@@ -1306,8 +1528,9 @@ public class DaemonApp {
                                  @JsonProperty("encoding") String encoding,
                                  @JsonProperty("ptyType") String ptyType,
                                  @JsonProperty("args") List<String> args,
-                                 @JsonProperty("environment") Map<String, String> environment,
-                                 @JsonProperty("runAsUser") String runAsUser) {
+                                  @JsonProperty("environment") Map<String, String> environment,
+                                  @JsonProperty("runAsUser") String runAsUser,
+                                  @JsonProperty("protectAppFilesFromSymlinkEscape") Boolean protectAppFilesFromSymlinkEscape) {
     }
 
     
@@ -1339,9 +1562,154 @@ public class DaemonApp {
     public static final class UnauthorizedException extends RuntimeException {
     }
 
+    
+    public static final class ForbiddenException extends RuntimeException {
+    }
+
+    
+    public static final class TooManyRequestsException extends RuntimeException {
+    }
+
     private static final class ApiExceptionHolder {
         static UnauthorizedException unauthorized() {
             return new UnauthorizedException();
+        }
+
+        static ForbiddenException forbidden() {
+            return new ForbiddenException();
+        }
+
+        static TooManyRequestsException tooManyRequests() {
+            return new TooManyRequestsException();
+        }
+    }
+
+    
+    static final class DaemonRateLimiter {
+
+        private static final int MAX_PUBLIC_PER_MINUTE = 60;
+        private static final int MAX_API_PER_MINUTE = 300;
+        private static final int MAX_SENSITIVE_PER_MINUTE = 20;
+        private static final int AUTH_FAIL_LIMIT = 5;
+        private static final long AUTH_LOCKOUT_MILLIS = 10 * 60_000L;
+
+        private final java.util.Map<String, long[]> publicCounts = new ConcurrentHashMap<>();
+        private final java.util.Map<String, long[]> apiCounts = new ConcurrentHashMap<>();
+        private final java.util.Map<String, long[]> sensitiveCounts = new ConcurrentHashMap<>();
+        private final java.util.Map<String, AuthState> authFailures = new ConcurrentHashMap<>();
+        private final java.util.function.LongSupplier clock;
+
+        DaemonRateLimiter() {
+            this(System::currentTimeMillis);
+        }
+
+        DaemonRateLimiter(java.util.function.LongSupplier clock) {
+            this.clock = clock;
+        }
+
+        enum AuthResult {
+            SUCCESS, INVALID, LOCKED
+        }
+
+        private static final class AuthState {
+            private int failures;
+            private long lockedUntil;
+            private boolean successUnlockConsumed;
+        }
+
+        private boolean allowIn(java.util.Map<String, long[]> counts, String ip, int limit) {
+            String k = ip == null ? "" : ip;
+            long now = clock.getAsLong();
+            long minute = now / 60_000;
+            long[] e = counts.computeIfAbsent(k, x -> new long[]{minute, 0});
+            synchronized (e) {
+                if (e[0] != minute) {
+                    e[0] = minute;
+                    e[1] = 0;
+                }
+                e[1]++;
+                return e[1] <= limit;
+            }
+        }
+
+        boolean allowPublic(String ip) {
+            return allowIn(publicCounts, ip, MAX_PUBLIC_PER_MINUTE);
+        }
+
+        boolean allowApi(String ip) {
+            return allowIn(apiCounts, ip, MAX_API_PER_MINUTE);
+        }
+
+        boolean allowSensitive(String ip) {
+            return allowIn(sensitiveCounts, ip, MAX_SENSITIVE_PER_MINUTE);
+        }
+
+        boolean isAuthLocked(String ip) {
+            String k = ip == null ? "" : ip;
+            AuthState state = authFailures.get(k);
+            if (state == null) {
+                return false;
+            }
+            synchronized (state) {
+                resetExpired(state, clock.getAsLong());
+                return state.lockedUntil != 0;
+            }
+        }
+
+        void recordAuthFailure(String ip) {
+            String k = ip == null ? "" : ip;
+            long now = clock.getAsLong();
+            AuthState state = authFailures.computeIfAbsent(k, x -> new AuthState());
+            synchronized (state) {
+                resetExpired(state, now);
+                state.failures++;
+                if (state.failures >= AUTH_FAIL_LIMIT) {
+                    state.lockedUntil = now + AUTH_LOCKOUT_MILLIS;
+                }
+            }
+        }
+
+        void resetAuthFailure(String ip) {
+            authFailures.remove(ip == null ? "" : ip);
+        }
+
+        AuthResult authenticate(String ip, boolean successUnlockOnceEnabled,
+                                java.util.function.BooleanSupplier credentialVerifier) {
+            String k = ip == null ? "" : ip;
+            AuthState state = authFailures.computeIfAbsent(k, x -> new AuthState());
+            synchronized (state) {
+                long now = clock.getAsLong();
+                resetExpired(state, now);
+                if (state.lockedUntil != 0) {
+                    if (!successUnlockOnceEnabled || !allowPublic(ip)) {
+                        return AuthResult.LOCKED;
+                    }
+                    boolean valid = credentialVerifier.getAsBoolean();
+                    if (valid && !state.successUnlockConsumed) {
+                        state.successUnlockConsumed = true;
+                        return AuthResult.SUCCESS;
+                    }
+                    return AuthResult.LOCKED;
+                }
+
+                if (credentialVerifier.getAsBoolean()) {
+                    authFailures.remove(k, state);
+                    return AuthResult.SUCCESS;
+                }
+                state.failures++;
+                if (state.failures >= AUTH_FAIL_LIMIT) {
+                    state.lockedUntil = now + AUTH_LOCKOUT_MILLIS;
+                }
+                return AuthResult.INVALID;
+            }
+        }
+
+        private static void resetExpired(AuthState state, long now) {
+            if (state.lockedUntil != 0 && state.lockedUntil <= now) {
+                state.failures = 0;
+                state.lockedUntil = 0;
+                state.successUnlockConsumed = false;
+            }
         }
     }
 }

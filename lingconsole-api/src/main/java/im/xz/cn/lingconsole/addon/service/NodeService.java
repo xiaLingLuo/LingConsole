@@ -22,13 +22,7 @@ import java.util.Map;
 
 
 public interface NodeService {
-
-    
     List<Map<String, Object>> listNodes();
-
-    
     Map<String, Object> getNode(String id);
-
-    
     int nodeStatus(String id);
 }

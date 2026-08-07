@@ -19,25 +19,30 @@ package im.xz.cn.lingconsole.common.addon;
 
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
 
-/**
- * 插件反向代理注册表 (按插件分组, 支持热重载清理)。
- */
 public final class AddonProxyRegistry {
 
     private final Map<String, List<AddonProxy>> byAddon = new ConcurrentHashMap<>();
 
     public void register(String addonName, String mountPath, String scheme,
                          String host, int port, String basePath, String requiredPermission) {
+        register(addonName, mountPath, scheme, host, port, basePath, requiredPermission, null);
+    }
+
+    public void register(String addonName, String mountPath, String scheme,
+                         String host, int port, String basePath, String requiredPermission,
+                         Set<String> forwardHeaders) {
         if (addonName == null || mountPath == null || host == null) {
             return;
         }
         byAddon.computeIfAbsent(addonName, k -> new CopyOnWriteArrayList<>())
                 .add(new AddonProxy(addonName, mountPath,
                         scheme == null || scheme.isBlank() ? "http" : scheme,
-                        host, port, basePath == null ? "" : basePath, requiredPermission));
+                        host, port, basePath == null ? "" : basePath, requiredPermission,
+                        forwardHeaders == null ? Set.of() : Set.copyOf(forwardHeaders)));
     }
 
     public void clear(String addonName) {
@@ -46,5 +51,15 @@ public final class AddonProxyRegistry {
 
     public List<AddonProxy> list() {
         return byAddon.values().stream().flatMap(List::stream).toList();
+    }
+
+    public AddonProxy find(String addonName, String requestPath) {
+        List<AddonProxy> proxies = byAddon.get(addonName);
+        if (proxies == null || requestPath == null) return null;
+        return proxies.stream()
+                .filter(proxy -> requestPath.equals(proxy.mountPath())
+                        || requestPath.startsWith(proxy.mountPath() + "/"))
+                .max(java.util.Comparator.comparingInt(proxy -> proxy.mountPath().length()))
+                .orElse(null);
     }
 }

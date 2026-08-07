@@ -100,12 +100,10 @@
             el.innerHTML = '<div class="lc-config-note">暂无权限组</div>';
         } else {
             el.innerHTML = groups.map(function (g) {
-                const builtin = g.id.indexOf("role:") === 0;
-                const delBtn = builtin ? '' : '<span class="gdel" data-del="' + escapeAttr(g.id) + '">✕ 删除</span>';
                 return '<div class="lc-pg-group-row" data-edit="' + escapeAttr(g.id) + '">' +
-                    '<div><div class="gname">' + escapeHtml(g.name) + (builtin ? ' <span class="lc-badge lc-badge--warn">内置</span>' : '') + '</div>' +
+                    '<div><div class="gname">' + escapeHtml(g.name) + '</div>' +
                     '<div class="gmeta">' + (g.groupId ? 'ID: <code class="gid">' + escapeHtml(g.groupId) + '</code> · ' : '') + escapeHtml(g.description || "") + ' · ' + (g.permissions || []).length + ' 项权限</div></div>' +
-                    delBtn +
+                    '<span class="gdel" data-del="' + escapeAttr(g.id) + '">✕ 删除</span>' +
                     '</div>';
             }).join("");
         }

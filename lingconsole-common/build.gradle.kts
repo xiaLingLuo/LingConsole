@@ -16,10 +16,10 @@
 dependencies {
     implementation(project(":lingconsole-api"))
     implementation("io.javalin:javalin:7.2.2")
-    implementation("com.fasterxml.jackson.core:jackson-databind:2.19.2")
+    implementation("com.fasterxml.jackson.core:jackson-databind:2.22.1")
     implementation("org.bouncycastle:bcprov-jdk18on:1.85")
     implementation("org.tomlj:tomlj:1.1.1")
-    implementation("org.slf4j:slf4j-api:2.0.17")
+    implementation("org.slf4j:slf4j-api:2.0.18")
 
     testImplementation("org.junit.jupiter:junit-jupiter")
 }

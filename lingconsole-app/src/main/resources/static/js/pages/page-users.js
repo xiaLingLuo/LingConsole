@@ -151,21 +151,27 @@
         });
     }
 
-    function saveUser() {
+    async function saveUser() {
         const username = document.getElementById("user-username").value.trim();
         const password = document.getElementById("user-password").value;
         if (!username) { document.getElementById("user-error").textContent = "请输入用户名"; return; }
         const lu = username.toLowerCase();
         if (lu === "ling" || lu === "root" || lu === "lingconsole") { document.getElementById("user-error").textContent = "该用户名已被保留, 不可使用"; return; }
-        if (!editingUserId && password.length < 6) { document.getElementById("user-error").textContent = "密码至少 6 位"; return; }
+        if (password) {
+            const perr = passwordError(password, username);
+            if (perr) { document.getElementById("user-error").textContent = perr; return; }
+        }
         const body = { username: username };
         if (password) body.password = password;
+        let groupIds = [];
         const gbox = document.getElementById("user-groups-box");
         if (canAssign() && gbox.dataset.ready === "1") {
-            body.groupIds = Array.prototype.map.call(
+            groupIds = Array.prototype.map.call(
                 gbox.querySelectorAll("input:checked"),
                 function (c) { return c.value; });
+            body.groupIds = groupIds;
         }
+        if (!(await confirmPermissionAssignIfNeeded(groupIds))) return;
 
         const req = editingUserId
             ? API.put("/users/" + editingUserId, body)
@@ -314,13 +320,34 @@
         const groupIds = Array.prototype.map.call(
             document.querySelectorAll("#perm-groups-box input:checked"),
             function (c) { return c.value; });
-        API.put("/users/" + userId + "/groups", { groupIds: groupIds }).then(function () {
-            closeModal("perm-modal");
-            LC.dialog.alert("权限已保存");
-            loadUsers();
-        }).catch(function (e) {
-            document.getElementById("perm-error").textContent = e.message || "保存失败";
+        confirmPermissionAssignIfNeeded(groupIds).then(function (confirmed) {
+            if (!confirmed) return;
+            API.put("/users/" + userId + "/groups", { groupIds: groupIds }).then(function () {
+                closeModal("perm-modal");
+                LC.dialog.alert("权限已保存");
+                loadUsers();
+            }).catch(function (e) {
+                document.getElementById("perm-error").textContent = e.message || "保存失败";
+            });
         });
+    }
+
+    
+    function grantsPermissionAssign(groupIds) {
+        if (!groupIds || !groupIds.length || !groups) return false;
+        for (let i = 0; i < groupIds.length; i++) {
+            const g = groups.find(function (x) { return x.id === groupIds[i]; });
+            if (g && (g.permissions || []).indexOf("lingconsole.permission.assign") !== -1) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    
+    function confirmPermissionAssignIfNeeded(groupIds) {
+        if (!grantsPermissionAssign(groupIds)) return Promise.resolve(true);
+        return LC.dialog.confirm("所选权限组将授予「权限分配」权限，这等同于管理员权限（可授予任意权限）！您确认要这么做吗？！");
     }
 
 
@@ -338,6 +365,12 @@
     }
     function escapeAttr(s) {
         return escapeHtml(s).replace(/"/g, "&quot;");
+    }
+    function passwordError(pw, username) {
+        if (!pw || pw.length < 8) return "密码长度至少 8 位";
+        if (!/[A-Za-z]/.test(pw) || !/[0-9]/.test(pw)) return "密码必须同时包含字母和数字";
+        if (pw.toLowerCase() === String(username).toLowerCase()) return "密码不能与用户名相同";
+        return null;
     }
 
 

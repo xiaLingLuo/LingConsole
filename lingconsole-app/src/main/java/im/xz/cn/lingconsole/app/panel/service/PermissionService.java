@@ -42,7 +42,7 @@ public class PermissionService {
     
     public Set<String> permissionsOf(String userId) {
         if (im.xz.cn.lingconsole.app.panel.model.RootAccount.ROOT_ID.equals(userId)) {
-            return Permissions.ALL;
+            return Permissions.ROOT_ALL;
         }
         User user = userRepository.findById(userId).orElse(null);
         if (user == null) {

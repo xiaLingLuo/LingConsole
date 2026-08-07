@@ -16,7 +16,6 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 package im.xz.cn.lingconsole.app.addon;
-
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -56,15 +55,12 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 
-
-public class AddonContextImpl implements AddonContext {
+public class AddonContextImpl implements AddonContext, AutoCloseable {
 
     private static final ObjectMapper MAPPER = new ObjectMapper();
-
     private final AddonInfo info;
     private final AddonLogger logger;
     private final im.xz.cn.lingconsole.common.addon.AddonManager addonManager;
-
     private final NodeService nodeService;
     private final UserService userService;
     private final LogService logService;
@@ -78,8 +74,6 @@ public class AddonContextImpl implements AddonContext {
     private final im.xz.cn.lingconsole.common.addon.AddonMenuRegistry menuRegistry;
     private final im.xz.cn.lingconsole.common.addon.AddonProxyRegistry proxyRegistry;
     private final ConsoleCommandDispatcher commandDispatcher;
-
-    
     private final Map<String, RouteEntry> panelRoutes = new ConcurrentHashMap<>();
     private final Map<String, RouteEntry> daemonRoutes = new ConcurrentHashMap<>();
 
@@ -87,6 +81,7 @@ public class AddonContextImpl implements AddonContext {
     }
 
     private final ScheduledExecutorService scheduler;
+    private final java.util.concurrent.atomic.AtomicBoolean closed = new java.util.concurrent.atomic.AtomicBoolean();
     private final ConfigAdapter config = new ConfigAdapter();
 
     public AddonContextImpl(AddonInfo info, AddonLogger logger,
@@ -127,11 +122,13 @@ public class AddonContextImpl implements AddonContext {
 
     @Override
     public AddonInfo info() {
+        ensureOpen();
         return info;
     }
 
     @Override
     public AddonLogger logger() {
+        ensureOpen();
         return logger;
     }
 
@@ -141,46 +138,55 @@ public class AddonContextImpl implements AddonContext {
 
     @Override
     public im.xz.cn.lingconsole.addon.service.NodeService nodes() {
+        ensureOpen();
         return new NodeAdapter();
     }
 
     @Override
     public im.xz.cn.lingconsole.addon.service.AppService apps() {
+        ensureOpen();
         return new AppAdapter();
     }
 
     @Override
     public im.xz.cn.lingconsole.addon.service.FileService files() {
+        ensureOpen();
         return new FileAdapter();
     }
 
     @Override
     public im.xz.cn.lingconsole.addon.service.MonitorService monitor() {
+        ensureOpen();
         return new MonitorAdapter();
     }
 
     @Override
     public im.xz.cn.lingconsole.addon.service.ExecService exec() {
+        ensureOpen();
         return new ExecAdapter();
     }
 
     @Override
     public im.xz.cn.lingconsole.addon.service.DataService data() {
+        ensureOpen();
         return new DataAdapter();
     }
 
     @Override
     public im.xz.cn.lingconsole.addon.service.UserService users() {
+        ensureOpen();
         return new UserAdapter();
     }
 
     @Override
     public im.xz.cn.lingconsole.addon.service.LogService logs() {
+        ensureOpen();
         return new LogAdapter();
     }
 
     @Override
     public im.xz.cn.lingconsole.addon.service.ConfigService config() {
+        ensureOpen();
         return config;
     }
 
@@ -196,6 +202,7 @@ public class AddonContextImpl implements AddonContext {
     @Override
     public void registerPanelRoute(AddonRouteMethod method, String path, AddonRouteHandler handler,
                                    String requiredPermission) {
+        ensureOpen();
         if (handler != null) {
             panelRoutes.put(key(method.name(), path), new RouteEntry(handler, normalizePermission(requiredPermission)));
         }
@@ -210,11 +217,11 @@ public class AddonContextImpl implements AddonContext {
         if (key == null || key.isBlank()) {
             return null;
         }
-        String normalized = key.trim().toLowerCase();
+        String normalized = key.trim().toLowerCase(java.util.Locale.ROOT);
         if (!PERMISSION_KEY_PATTERN.matcher(normalized).matches()) {
             if (addonManager != null) {
                 addonManager.markError(info.name(),
-                        "非法权限节点 \"" + key + "\": 仅允许小写英文字母与阿拉伯数字");
+                        "非法权限节点 \"" + key + "\"");
             }
             return null;
         }
@@ -225,15 +232,23 @@ public class AddonContextImpl implements AddonContext {
         if (permission == null || permission.isBlank()) {
             return null;
         }
-        if (AddonContext.PUBLIC.equals(permission)) {
-            return permission;
+        String trimmed = permission.trim();
+        if (AddonContext.PUBLIC.equals(trimmed)) {
+            return trimmed;
         }
-        if (permission.startsWith("lingconsole.")) {
-            return permission;
+        if (trimmed.startsWith("lingconsole.")) {
+            return trimmed;
         }
-        String normalized = sanitizePermissionKey(permission);
+        String normalized = sanitizePermissionKey(trimmed);
         if (normalized == null) {
             return null;
+        }
+        String addonPrefix = info.name().toLowerCase(java.util.Locale.ROOT) + ".";
+        if (normalized.startsWith(addonPrefix)) {
+            String relative = normalized.substring(addonPrefix.length());
+            im.xz.cn.lingconsole.common.permission.PluginPermissionRegistry.register(
+                    info.name(), relative, relative);
+            return normalized;
         }
         String full = info.name() + "." + normalized;
         im.xz.cn.lingconsole.common.permission.PluginPermissionRegistry.register(info.name(), normalized, normalized);
@@ -242,6 +257,7 @@ public class AddonContextImpl implements AddonContext {
 
     @Override
     public void registerPermission(String key, String label) {
+        ensureOpen();
         String normalized = sanitizePermissionKey(key);
         if (normalized == null) {
             return;
@@ -252,6 +268,7 @@ public class AddonContextImpl implements AddonContext {
 
     @Override
     public void registerDaemonRoute(AddonRouteMethod method, String path, AddonRouteHandler handler) {
+        ensureOpen();
         if (handler != null) {
             daemonRoutes.put(key(method.name(), path), new RouteEntry(handler, null));
         }
@@ -259,6 +276,7 @@ public class AddonContextImpl implements AddonContext {
 
     @Override
     public void registerCommand(String command, CommandHandler handler) {
+        ensureOpen();
         if (commandDispatcher == null || handler == null) {
             return;
         }
@@ -271,55 +289,75 @@ public class AddonContextImpl implements AddonContext {
     }
 
     @Override
-    public void registerSocketEvent(String namespace, String event, AddonSocketHandler handler) {
-        socketRegistry.register(info.name(), namespace, event, handler);
+    public void registerSocketEvent(String namespace, String event, String requiredPermission,
+                                    AddonSocketHandler handler) {
+        ensureOpen();
+        String normalizedPermission = normalizePermission(requiredPermission);
+        if (normalizedPermission == null) {
+            throw new IllegalArgumentException("Socket 事件必须声明有效的 requiredPermission");
+        }
+        socketRegistry.register(info.name(), namespace, event, normalizedPermission, handler);
     }
 
     @Override
     public void registerPanelMenu(String label, String url) {
+        ensureOpen();
         menuRegistry.register(info.name(), label, url);
     }
 
     @Override
     public void registerPanelProxy(String mountPath, String scheme, String host, int port, String basePath) {
-        registerPanelProxy(mountPath, scheme, host, port, basePath, null);
+        registerPanelProxy(mountPath, scheme, host, port, basePath, (String) null);
     }
 
     @Override
     public void registerPanelProxy(String mountPath, String scheme, String host, int port, String basePath,
                                    String requiredPermission) {
-        proxyRegistry.register(info.name(), mountPath, scheme, host, port, basePath, requiredPermission);
+        registerPanelProxy(mountPath, scheme, host, port, basePath, requiredPermission, null);
+    }
+
+    @Override
+    public void registerPanelProxy(String mountPath, String scheme, String host, int port, String basePath,
+                                   String requiredPermission, java.util.Set<String> forwardHeaders) {
+        ensureOpen();
+        proxyRegistry.register(info.name(), mountPath, scheme, host, port, basePath, requiredPermission, forwardHeaders);
     }
 
     @Override
     public ScheduledExecutorService scheduler() {
+        ensureOpen();
         return scheduler;
     }
 
     @Override
     public Path dataDir() {
+        ensureOpen();
         return dataDir;
     }
 
     @Override
     public Path addonDataDir() {
+        ensureOpen();
         return addonDataDir;
     }
 
     
     public AddonRouteHandler panelRoute(String method, String path) {
+        ensureOpen();
         RouteEntry e = panelRoutes.get(key(method, path));
         return e == null ? null : e.handler();
     }
 
     
     public AddonRouteHandler daemonRoute(String method, String path) {
+        ensureOpen();
         RouteEntry e = daemonRoutes.get(key(method, path));
         return e == null ? null : e.handler();
     }
 
     
     public String panelRoutePermission(String method, String path) {
+        ensureOpen();
         RouteEntry e = panelRoutes.get(key(method, path));
         return e == null ? null : e.permission();
     }
@@ -336,7 +374,27 @@ public class AddonContextImpl implements AddonContext {
 
     
     public void saveConfig(Map<String, String> values) {
+        ensureOpen();
         config.save(values);
+    }
+
+    @Override
+    public void close() {
+        if (!closed.compareAndSet(false, true)) return;
+        scheduler.shutdownNow();
+        try {
+            scheduler.awaitTermination(2, java.util.concurrent.TimeUnit.SECONDS);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        }
+        panelRoutes.clear();
+        daemonRoutes.clear();
+    }
+
+    private void ensureOpen() {
+        if (closed.get()) {
+            throw new IllegalStateException("插件 Context 已关闭: " + info.name());
+        }
     }
 
     private static String key(String method, String path) {
@@ -348,6 +406,7 @@ public class AddonContextImpl implements AddonContext {
     
 
     private Node findNode(String nodeId) {
+        ensureOpen();
         if (nodeService == null) {
             return null;
         }
@@ -357,6 +416,7 @@ public class AddonContextImpl implements AddonContext {
     private class NodeAdapter implements im.xz.cn.lingconsole.addon.service.NodeService {
         @Override
         public List<Map<String, Object>> listNodes() {
+            ensureOpen();
             if (nodeService == null) {
                 return List.of();
             }
@@ -365,6 +425,7 @@ public class AddonContextImpl implements AddonContext {
 
         @Override
         public Map<String, Object> getNode(String id) {
+            ensureOpen();
             if (nodeService == null) {
                 return null;
             }
@@ -374,6 +435,7 @@ public class AddonContextImpl implements AddonContext {
 
         @Override
         public int nodeStatus(String id) {
+            ensureOpen();
             if (nodeService == null) {
                 return -1;
             }
@@ -385,6 +447,7 @@ public class AddonContextImpl implements AddonContext {
     private class AppAdapter implements im.xz.cn.lingconsole.addon.service.AppService {
         @Override
         public List<Map<String, Object>> listApps(String nodeId) {
+            ensureOpen();
             JsonNode data = request(nodeId, "app:list", Map.of());
             return jsonArrayToMaps(data);
         }
@@ -392,6 +455,7 @@ public class AddonContextImpl implements AddonContext {
         @Override
         public Map<String, Object> createApp(String nodeId, String name, String command,
                                              List<String> args, String workDir) {
+            ensureOpen();
             Map<String, Object> payload = new LinkedHashMap<>();
             payload.put("id", im.xz.cn.lingconsole.common.util.IdUtil.uuid().replace("-", "").toLowerCase().substring(0, 12));
             payload.put("name", name);
@@ -413,21 +477,25 @@ public class AddonContextImpl implements AddonContext {
 
         @Override
         public boolean startApp(String nodeId, String appId) {
+            ensureOpen();
             return isOk(request(nodeId, "app:start", Map.of("id", appId)));
         }
 
         @Override
         public boolean stopApp(String nodeId, String appId) {
+            ensureOpen();
             return isOk(request(nodeId, "app:stop", Map.of("id", appId)));
         }
 
         @Override
         public boolean restartApp(String nodeId, String appId) {
+            ensureOpen();
             return isOk(request(nodeId, "app:restart", Map.of("id", appId)));
         }
 
         @Override
         public List<String> appLogs(String nodeId, String appId, int count) {
+            ensureOpen();
             JsonNode data = request(nodeId, "app:log", Map.of("id", appId, "count", count));
             List<String> logs = new ArrayList<>();
             if (data != null && data.path("logs").isArray()) {
@@ -438,6 +506,7 @@ public class AddonContextImpl implements AddonContext {
 
         @Override
         public boolean signalApp(String nodeId, String appId, String signal) {
+            ensureOpen();
             Node node = findNode(nodeId);
             if (node == null) {
                 return false;
@@ -456,6 +525,7 @@ public class AddonContextImpl implements AddonContext {
     private class FileAdapter implements im.xz.cn.lingconsole.addon.service.FileService {
         @Override
         public List<Map<String, Object>> listFiles(String nodeId, String path) {
+            ensureOpen();
             Node node = findNode(nodeId);
             if (node == null) return List.of();
             try {
@@ -469,6 +539,7 @@ public class AddonContextImpl implements AddonContext {
 
         @Override
         public String readFile(String nodeId, String path) {
+            ensureOpen();
             Node node = findNode(nodeId);
             if (node == null) return null;
             try {
@@ -482,6 +553,7 @@ public class AddonContextImpl implements AddonContext {
 
         @Override
         public boolean writeFile(String nodeId, String path, String content) {
+            ensureOpen();
             Node node = findNode(nodeId);
             if (node == null) return false;
             try {
@@ -497,6 +569,7 @@ public class AddonContextImpl implements AddonContext {
 
         @Override
         public boolean deleteFile(String nodeId, String path) {
+            ensureOpen();
             Node node = findNode(nodeId);
             if (node == null) return false;
             try {
@@ -510,6 +583,7 @@ public class AddonContextImpl implements AddonContext {
 
         @Override
         public boolean createDirectory(String nodeId, String path) {
+            ensureOpen();
             Node node = findNode(nodeId);
             if (node == null) return false;
             try {
@@ -525,6 +599,7 @@ public class AddonContextImpl implements AddonContext {
     private class MonitorAdapter implements im.xz.cn.lingconsole.addon.service.MonitorService {
         @Override
         public Map<String, Object> snapshot(String nodeId) {
+            ensureOpen();
             JsonNode data = request(nodeId, "monitor:stats", Map.of());
             return data == null ? Map.of() : MAPPER.convertValue(data, new TypeReference<>() {
             });
@@ -534,6 +609,7 @@ public class AddonContextImpl implements AddonContext {
     private class ExecAdapter implements im.xz.cn.lingconsole.addon.service.ExecService {
         @Override
         public im.xz.cn.lingconsole.addon.ExecResult exec(String nodeId, String command, long timeoutMs) {
+            ensureOpen();
             Node node = findNode(nodeId);
             if (node == null) {
                 return new im.xz.cn.lingconsole.addon.ExecResult(-1, "", "节点不存在", false);
@@ -558,6 +634,7 @@ public class AddonContextImpl implements AddonContext {
     private class DataAdapter implements im.xz.cn.lingconsole.addon.service.DataService {
         @Override
         public void put(String key, String value) {
+            ensureOpen();
             try (java.sql.Connection conn = db.getConnection();
                  java.sql.PreparedStatement ps = conn.prepareStatement(
                          "INSERT OR REPLACE INTO addon_data (addon, k, v) VALUES (?, ?, ?)")) {
@@ -572,6 +649,7 @@ public class AddonContextImpl implements AddonContext {
 
         @Override
         public String get(String key) {
+            ensureOpen();
             try (java.sql.Connection conn = db.getConnection();
                  java.sql.PreparedStatement ps = conn.prepareStatement(
                          "SELECT v FROM addon_data WHERE addon = ? AND k = ?")) {
@@ -588,6 +666,7 @@ public class AddonContextImpl implements AddonContext {
 
         @Override
         public void delete(String key) {
+            ensureOpen();
             try (java.sql.Connection conn = db.getConnection();
                  java.sql.PreparedStatement ps = conn.prepareStatement(
                          "DELETE FROM addon_data WHERE addon = ? AND k = ?")) {
@@ -601,6 +680,7 @@ public class AddonContextImpl implements AddonContext {
 
         @Override
         public Map<String, String> all() {
+            ensureOpen();
             Map<String, String> map = new LinkedHashMap<>();
             try (java.sql.Connection conn = db.getConnection();
                  java.sql.PreparedStatement ps = conn.prepareStatement(
@@ -621,6 +701,7 @@ public class AddonContextImpl implements AddonContext {
     private class UserAdapter implements im.xz.cn.lingconsole.addon.service.UserService {
         @Override
         public List<Map<String, Object>> listUsers() {
+            ensureOpen();
             if (userService == null) {
                 return List.of();
             }
@@ -636,6 +717,7 @@ public class AddonContextImpl implements AddonContext {
 
         @Override
         public Map<String, Object> getUser(String id) {
+            ensureOpen();
             if (userService == null) {
                 return null;
             }
@@ -653,11 +735,12 @@ public class AddonContextImpl implements AddonContext {
     private class LogAdapter implements im.xz.cn.lingconsole.addon.service.LogService {
         @Override
         public void record(String action, String target, String detail) {
+            ensureOpen();
             if (logService == null) {
                 return;
             }
             try {
-                logService.record("addon:" + info.name(), action, target, detail, "addon");
+                logService.recordPlugin(info.name(), action, target, detail, null, null, null);
             } catch (Exception e) {
                 logger.debug("日志记录失败", e);
             }
@@ -672,12 +755,14 @@ public class AddonContextImpl implements AddonContext {
 
         @Override
         public void define(String key, ConfigType type, String label, String description, String defaultValue) {
+            ensureOpen();
             defineEntry(key, type, label, description, defaultValue, null);
         }
 
         @Override
         public void defineSelect(String key, String label, String description, String defaultValue,
                                  List<String> options) {
+            ensureOpen();
             defineEntry(key, ConfigType.SELECT, label, description, defaultValue, options);
         }
 
@@ -694,6 +779,7 @@ public class AddonContextImpl implements AddonContext {
 
         @Override
         public String getString(String key, String def) {
+            ensureOpen();
             materialize();
             String v = values.get(key);
             return v != null ? v : def;
@@ -701,6 +787,7 @@ public class AddonContextImpl implements AddonContext {
 
         @Override
         public int getInt(String key, int def) {
+            ensureOpen();
             String v = getString(key, null);
             if (v == null) return def;
             try {
@@ -712,6 +799,7 @@ public class AddonContextImpl implements AddonContext {
 
         @Override
         public boolean getBoolean(String key, boolean def) {
+            ensureOpen();
             String v = getString(key, null);
             if (v == null) return def;
             return "true".equalsIgnoreCase(v.trim()) || "1".equals(v.trim());
@@ -719,6 +807,7 @@ public class AddonContextImpl implements AddonContext {
 
         @Override
         public List<ConfigEntry> entries() {
+            ensureOpen();
             materialize();
             List<ConfigEntry> out = new ArrayList<>();
             for (ConfigEntry e : schema) {
@@ -730,12 +819,13 @@ public class AddonContextImpl implements AddonContext {
 
         @Override
         public Map<String, String> values() {
+            ensureOpen();
             materialize();
             return Map.copyOf(values);
         }
 
-        
         public void save(Map<String, String> newValues) {
+            ensureOpen();
             materialize();
             Map<String, String> merged = new LinkedHashMap<>(values);
             if (newValues != null) {
@@ -747,6 +837,7 @@ public class AddonContextImpl implements AddonContext {
 
         @Override
         public Map<String, Object> panelConfig() {
+            ensureOpen();
             Map<String, Object> m = new LinkedHashMap<>();
             m.put("host", panelConfig.host());
             m.put("port", panelConfig.port());
@@ -761,6 +852,7 @@ public class AddonContextImpl implements AddonContext {
 
         @Override
         public Map<String, Object> daemonConfig() {
+            ensureOpen();
             Map<String, Object> m = new LinkedHashMap<>();
             m.put("host", daemonConfig.host());
             m.put("port", daemonConfig.port());
@@ -768,13 +860,19 @@ public class AddonContextImpl implements AddonContext {
             m.put("whiteListEnabled", daemonConfig.whiteListEnabled());
             m.put("authTimeout", daemonConfig.authTimeout());
             m.put("maxFileTasks", daemonConfig.maxFileTasks());
-            m.put("maxZipSize", daemonConfig.maxZipSize());
+            m.put("archiveCompressMaxEntries", daemonConfig.archiveCompress().maxEntries());
+            m.put("archiveCompressMaxTotalBytes", daemonConfig.archiveCompress().maxTotalBytes());
+            m.put("archiveCompressTimeoutSeconds", daemonConfig.archiveCompress().timeoutSeconds());
+            m.put("archiveExtractMaxEntries", daemonConfig.archiveExtract().maxEntries());
+            m.put("archiveExtractMaxTotalBytes", daemonConfig.archiveExtract().maxTotalBytes());
+            m.put("archiveExtractTimeoutSeconds", daemonConfig.archiveExtract().timeoutSeconds());
             m.put("outputBufferSize", daemonConfig.outputBufferSize());
             return m;
         }
 
         @Override
         public Path dataDir() {
+            ensureOpen();
             return dataDir;
         }
 
@@ -841,6 +939,7 @@ public class AddonContextImpl implements AddonContext {
     }
 
     private JsonNode request(String nodeId, String event, Map<String, Object> data) {
+        ensureOpen();
         if (nodeService == null) {
             return null;
         }

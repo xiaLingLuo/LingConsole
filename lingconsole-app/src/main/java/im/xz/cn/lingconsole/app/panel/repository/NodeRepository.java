@@ -36,6 +36,10 @@ public class NodeRepository {
         this.db = db;
     }
 
+    public DatabaseManager databaseManager() {
+        return db;
+    }
+
     public List<Node> findAll() {
         String sql = "SELECT id, name, url, key, status, style, created_at, updated_at FROM nodes ORDER BY created_at";
         List<Node> nodes = new ArrayList<>();

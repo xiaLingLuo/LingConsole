@@ -47,6 +47,18 @@ window.app = (function () {
         return false;
     }
 
+    function hasAnyPermission(prefixes) {
+        if (!prefixes || !prefixes.length || !currentPermissions) return false;
+        for (let i = 0; i < currentPermissions.length; i++) {
+            const p = currentPermissions[i];
+            if (p === "*") return true;
+            for (let j = 0; j < prefixes.length; j++) {
+                if (p === prefixes[j] || p.startsWith(prefixes[j] + ".")) return true;
+            }
+        }
+        return false;
+    }
+
     function isRoot() {
         return currentUser && currentUser.role === 0;
     }
@@ -67,16 +79,35 @@ window.app = (function () {
     }
 
     
+    const MENU_PERMS = {
+        "menu-dashboard": [["lingconsole.dashboard.admin"], ["lingconsole.dashboard.user"]],
+        "menu-nodes": [["lingconsole.node", "lingconsole.file.node", "lingconsole.terminal.node", "lingconsole.monitor.read"]],
+        "menu-apps": [["lingconsole.app", "lingconsole.file.app", "lingconsole.terminal.app"]],
+        "menu-monitor": [["lingconsole.monitor.read"]],
+        "menu-packages": [["lingconsole.packages.manage"]],
+        "menu-user-manage": [["lingconsole.user.manage"]],
+        "menu-perm-groups": [["lingconsole.permission.assign"]],
+        "menu-addons": [["lingconsole.permission.assign"]],
+        "menu-logs": [["lingconsole.log.read"]]
+    };
+
+    
     function applyPermissionVisibility() {
+        for (const id in MENU_PERMS) {
+            const el = document.getElementById(id);
+            if (!el) continue;
+            let visible = false;
+            const groups = MENU_PERMS[id];
+            for (let g = 0; g < groups.length && !visible; g++) {
+                if (hasAnyPermission(groups[g])) visible = true;
+            }
+            el.style.display = visible ? "" : "none";
+        }
+        const settingsMenu = document.getElementById("menu-settings");
+        if (settingsMenu) settingsMenu.style.display = isRoot() ? "" : "none";
         var userMenu = document.getElementById("menu-user-manage");
-        if (userMenu) userMenu.style.display = (!singleUserMode && hasPermission("lingconsole.user.manage")) ? "" : "none";
-        var permGroupsMenu = document.getElementById("menu-perm-groups");
-        if (permGroupsMenu) permGroupsMenu.style.display = hasPermission("lingconsole.permission.assign") ? "" : "none";
-    var addonMenu = document.getElementById("menu-addons");
-    if (addonMenu) addonMenu.style.display = hasPermission("lingconsole.permission.assign") ? "" : "none";
-    var packageMenu = document.getElementById("menu-packages");
-    if (packageMenu) packageMenu.style.display = hasPermission("lingconsole.packages.manage") ? "" : "none";
-}
+        if (userMenu && singleUserMode) userMenu.style.display = "none";
+    }
 
     
     function loadPluginMenus() {
@@ -227,6 +258,7 @@ window.app = (function () {
         currentNodeName: currentNodeName,
         renderSidebarNode: renderSidebarNode,
         hasPermission: hasPermission,
+        hasAnyPermission: hasAnyPermission,
         isRoot: isRoot,
         setAuthData: setAuthData,
         onReady: onReady

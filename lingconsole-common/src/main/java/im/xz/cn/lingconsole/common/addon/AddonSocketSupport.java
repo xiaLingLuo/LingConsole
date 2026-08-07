@@ -22,7 +22,8 @@ import im.xz.cn.lingconsole.common.socketio.SocketIOConnection;
 import im.xz.cn.lingconsole.common.socketio.SocketIOResponse;
 import im.xz.cn.lingconsole.common.socketio.SocketIOServer;
 
-import java.util.List;
+import java.util.Objects;
+import java.util.function.BiPredicate;
 import java.util.function.Predicate;
 
 
@@ -32,36 +33,49 @@ public final class AddonSocketSupport {
     }
 
     public static void apply(SocketIOServer server, AddonSocketRegistry registry,
-                             Predicate<SocketIOConnection> authenticated) {
-        if (server == null || registry == null) {
-            return;
-        }
-        for (AddonSocketRegistry.Registration reg : registry.all()) {
-            server.on(reg.namespace(), reg.event(), (conn, event, data) -> {
-                if (authenticated != null && !authenticated.test(conn)) {
-                    conn.emit(event, SocketIOResponse.error(data, 401, "未认证"));
-                    return;
-                }
-                reg.handler().handle(wrap(conn), event, data);
-            });
+                             Predicate<SocketIOConnection> authenticated,
+                             BiPredicate<SocketIOConnection, String> permitted) {
+        Objects.requireNonNull(server, "server");
+        Objects.requireNonNull(registry, "registry");
+        Objects.requireNonNull(authenticated, "authenticated");
+        Objects.requireNonNull(permitted, "permitted");
+        for (String addonName : registry.addonNames()) {
+            apply(server, registry, addonName, authenticated, permitted);
         }
     }
 
     
     public static void apply(SocketIOServer server, AddonSocketRegistry registry, String addonName,
-                             Predicate<SocketIOConnection> authenticated) {
-        if (server == null || registry == null) {
-            return;
-        }
+                             Predicate<SocketIOConnection> authenticated,
+                             BiPredicate<SocketIOConnection, String> permitted) {
+        Objects.requireNonNull(server, "server");
+        Objects.requireNonNull(registry, "registry");
+        Objects.requireNonNull(authenticated, "authenticated");
+        Objects.requireNonNull(permitted, "permitted");
         for (AddonSocketRegistry.Registration reg : registry.all(addonName)) {
-            server.on(reg.namespace(), reg.event(), (conn, event, data) -> {
-                if (authenticated != null && !authenticated.test(conn)) {
-                    conn.emit(event, SocketIOResponse.error(data, 401, "未认证"));
-                    return;
-                }
-                reg.handler().handle(wrap(conn), event, data);
-            });
+            register(server, registry, addonName, reg, authenticated, permitted);
         }
+    }
+
+    private static void register(SocketIOServer server, AddonSocketRegistry registry, String addonName,
+                                 AddonSocketRegistry.Registration reg,
+                                  Predicate<SocketIOConnection> authenticated,
+                                  BiPredicate<SocketIOConnection, String> permitted) {
+        server.on(reg.owner(), reg.namespace(), reg.event(), (conn, event, data) -> {
+            AddonSocketRegistry.Registration current = registry.find(addonName, reg.namespace(), reg.event());
+            if (current == null) {
+                return;
+            }
+            if (!authenticated.test(conn)) {
+                conn.emit(event, SocketIOResponse.error(data, 401, "未认证"));
+                return;
+            }
+            if (!permitted.test(conn, current.requiredPermission())) {
+                conn.emit(event, SocketIOResponse.error(data, 403, "无权限"));
+                return;
+            }
+            current.handler().handle(wrap(conn), event, data);
+        });
     }
 
     private static AddonSocketConnection wrap(SocketIOConnection conn) {

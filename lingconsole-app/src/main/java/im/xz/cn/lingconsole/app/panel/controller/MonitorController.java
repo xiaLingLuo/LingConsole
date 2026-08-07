@@ -36,12 +36,10 @@ public class MonitorController {
     public MonitorController(NodeService nodeService) {
         this.nodeService = nodeService;
     }
-
     public void register(RoutesConfig routes, String prefix) {
         routes.get(prefix + "/nodes/{nodeId}/monitor", this::monitor);
     }
 
-    
     private void monitor(Context ctx) {
         String nodeId = ctx.pathParam("nodeId");
         PermissionMiddleware.requirePermission(ctx, "lingconsole.monitor.read." + nodeId);

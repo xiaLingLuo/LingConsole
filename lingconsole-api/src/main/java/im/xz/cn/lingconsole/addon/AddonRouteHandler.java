@@ -22,6 +22,5 @@ import io.javalin.http.Context;
 
 @FunctionalInterface
 public interface AddonRouteHandler {
-
     void handle(Context ctx);
 }

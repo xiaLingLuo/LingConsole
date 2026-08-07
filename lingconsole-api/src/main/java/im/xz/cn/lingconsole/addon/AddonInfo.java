@@ -30,7 +30,6 @@ public record AddonInfo(
         String description,
         String apiVersion,
         List<String> dependencies) {
-
     @NotNull
     @Override
     public String toString() {

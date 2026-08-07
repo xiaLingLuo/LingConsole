@@ -62,6 +62,8 @@ public class Node {
 
     
     @JsonProperty(access = JsonProperty.Access.WRITE_ONLY)
+
+
     public String getKey() {
         return key;
     }

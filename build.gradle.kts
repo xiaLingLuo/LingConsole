@@ -20,7 +20,7 @@ plugins {
 
 allprojects {
     group = "im.xz.cn"
-    version = "1.1.86"
+    version = "1.2.9"
 
     repositories {
         mavenCentral()
@@ -35,6 +35,10 @@ allprojects {
 subprojects {
     apply(plugin = "java")
 
+    dependencyLocking {
+        lockAllConfigurations()
+    }
+
     extensions.configure<JavaPluginExtension> {
         toolchain {
             languageVersion = JavaLanguageVersion.of(25)
@@ -42,7 +46,9 @@ subprojects {
     }
 
     dependencies {
-        testImplementation(platform("org.junit:junit-bom:6.0.0"))
+        implementation(enforcedPlatform("org.eclipse.jetty:jetty-bom:12.1.12"))
+        implementation(enforcedPlatform("org.eclipse.jetty.ee10:jetty-ee10-bom:12.1.12"))
+        testImplementation(platform("org.junit:junit-bom:6.1.2"))
         testImplementation("org.junit.jupiter:junit-jupiter")
         testRuntimeOnly("org.junit.platform:junit-platform-launcher")
     }

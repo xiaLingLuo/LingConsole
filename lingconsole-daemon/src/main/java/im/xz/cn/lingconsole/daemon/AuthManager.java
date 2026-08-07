@@ -23,6 +23,8 @@ import im.xz.cn.lingconsole.common.util.TimingSafeUtil;
 public record AuthManager(String key) {
 
     public boolean verify(String provided) {
-        return provided != null && TimingSafeUtil.constantTimeEquals(key, provided);
+        return key != null && !key.isBlank()
+                && provided != null && !provided.isBlank()
+                && TimingSafeUtil.constantTimeEquals(key, provided);
     }
 }

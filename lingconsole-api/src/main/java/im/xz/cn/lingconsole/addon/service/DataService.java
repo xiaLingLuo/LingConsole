@@ -21,16 +21,8 @@ import java.util.Map;
 
 
 public interface DataService {
-
-    
     void put(String key, String value);
-
-    
     String get(String key);
-
-    
     void delete(String key);
-
-    
     Map<String, String> all();
 }

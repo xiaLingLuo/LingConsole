@@ -19,12 +19,8 @@ package im.xz.cn.lingconsole.addon;
 
 
 public interface AddonLogger {
-
     void info(String message, Object... args);
-
     void warn(String message, Object... args);
-
     void error(String message, Object... args);
-
     void debug(String message, Object... args);
 }

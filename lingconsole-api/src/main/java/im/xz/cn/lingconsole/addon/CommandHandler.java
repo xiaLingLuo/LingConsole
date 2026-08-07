@@ -20,6 +20,5 @@ package im.xz.cn.lingconsole.addon;
 
 @FunctionalInterface
 public interface CommandHandler {
-
     void execute(String command, String[] args, CommandSender sender);
 }

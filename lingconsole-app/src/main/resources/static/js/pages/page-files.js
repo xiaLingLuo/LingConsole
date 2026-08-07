@@ -173,30 +173,32 @@
             return;
         }
         tbody.innerHTML = entries.map(function (e) {
-            const icon = e.directory ? "📁" : "📄";
-            const size = e.directory ? "--" : window.app.formatSize(e.size);
+            const directory = !!e.directory;
+            const entrySize = Number.isFinite(Number(e.size)) ? Number(e.size) : 0;
+            const icon = directory ? "📁" : "📄";
+            const size = directory ? "--" : escapeHtml(window.app.formatSize(entrySize));
             const checked = selected.has(e.path) ? " checked" : "";
-            const extractBtn = (!e.directory && isArchiveName(e.name))
+            const extractBtn = (!directory && isArchiveName(e.name))
                 ? '<button class="lc-btn lc-btn--sm" data-action="extract" data-path="' + encodeURIComponent(e.path) + '" data-name="' + escapeAttr(e.name) + '">解压</button> '
                 : "";
-            const actions = e.directory
+            const actions = directory
                 ? '<button class="lc-btn lc-btn--sm" data-action="enter" data-path="' + encodeURIComponent(e.path) + '">进入</button> ' +
                   '<button class="lc-btn lc-btn--sm" data-action="compress" data-path="' + encodeURIComponent(e.path) + '" data-name="' + escapeAttr(e.name) + '" data-dir="1">压缩</button> ' +
                   '<button class="lc-btn lc-btn--sm" data-action="copy" data-path="' + encodeURIComponent(e.path) + '" data-name="' + escapeAttr(e.name) + '" data-dir="1">复制</button> ' +
                   '<button class="lc-btn lc-btn--sm" data-action="rename" data-path="' + encodeURIComponent(e.path) + '" data-name="' + escapeAttr(e.name) + '">重命名</button> ' +
                   '<button class="lc-btn lc-btn--sm lc-btn--danger" data-action="delete" data-path="' + encodeURIComponent(e.path) + '" data-name="' + escapeAttr(e.name) + '">删除</button>'
-                : '<button class="lc-btn lc-btn--sm" data-action="edit" data-path="' + encodeURIComponent(e.path) + '" data-name="' + escapeAttr(e.name) + '" data-size="' + e.size + '">编辑</button> ' +
-                  '<button class="lc-btn lc-btn--sm" data-action="download" data-path="' + encodeURIComponent(e.path) + '" data-name="' + escapeAttr(e.name) + '">下载</button> ' +
+                : '<button class="lc-btn lc-btn--sm" data-action="edit" data-path="' + encodeURIComponent(e.path) + '" data-name="' + escapeAttr(e.name) + '" data-size="' + entrySize + '">编辑</button> ' +
+                  '<button class="lc-btn lc-btn--sm" data-action="download" data-path="' + encodeURIComponent(e.path) + '" data-name="' + escapeAttr(e.name) + '" data-size="' + entrySize + '">下载</button> ' +
                   '<button class="lc-btn lc-btn--sm" data-action="compress" data-path="' + encodeURIComponent(e.path) + '" data-name="' + escapeAttr(e.name) + '" data-dir="0">压缩</button> ' +
                   extractBtn +
                   '<button class="lc-btn lc-btn--sm" data-action="copy" data-path="' + encodeURIComponent(e.path) + '" data-name="' + escapeAttr(e.name) + '" data-dir="0">复制</button> ' +
                   '<button class="lc-btn lc-btn--sm" data-action="rename" data-path="' + encodeURIComponent(e.path) + '" data-name="' + escapeAttr(e.name) + '">重命名</button> ' +
                   '<button class="lc-btn lc-btn--sm lc-btn--danger" data-action="delete" data-path="' + encodeURIComponent(e.path) + '" data-name="' + escapeAttr(e.name) + '">删除</button>';
             return '<tr class="' + (checked ? "lc-file-row--sel" : "") + '" data-path="' + encodeURIComponent(e.path) + '">' +
-                '<td><input type="checkbox" class="lc-file-check" data-path="' + encodeURIComponent(e.path) + '" data-name="' + escapeAttr(e.name) + '" data-dir="' + (e.directory ? "1" : "0") + '"' + checked + '></td>' +
-                '<td><span class="lc-file-icon">' + icon + '</span> <span data-action="open" data-path="' + encodeURIComponent(e.path) + '" data-dir="' + e.directory + '" data-size="' + e.size + '" class="lc-file-name">' + escapeHtml(e.name) + '</span></td>' +
+                '<td><input type="checkbox" class="lc-file-check" data-path="' + encodeURIComponent(e.path) + '" data-name="' + escapeAttr(e.name) + '" data-dir="' + (directory ? "1" : "0") + '" data-size="' + entrySize + '"' + checked + '></td>' +
+                '<td><span class="lc-file-icon">' + icon + '</span> <span data-action="open" data-path="' + encodeURIComponent(e.path) + '" data-dir="' + directory + '" data-size="' + entrySize + '" class="lc-file-name">' + escapeHtml(e.name) + '</span></td>' +
                 '<td>' + size + '</td>' +
-                '<td>' + window.app.formatTime(e.modified) + '</td>' +
+                '<td>' + escapeHtml(window.app.formatTime(e.modified)) + '</td>' +
                 '<td>' + actions + '</td>' +
                 '</tr>';
         }).join("");
@@ -205,7 +207,7 @@
             cb.addEventListener("change", function () {
                 const p = decodeURIComponent(cb.getAttribute("data-path"));
                 if (cb.checked) {
-                    selected.set(p, { name: cb.getAttribute("data-name"), dir: cb.getAttribute("data-dir") === "1" });
+                    selected.set(p, { name: cb.getAttribute("data-name"), dir: cb.getAttribute("data-dir") === "1", size: parseInt(cb.getAttribute("data-size"), 10) || 0 });
                 } else {
                     selected.delete(p);
                 }
@@ -223,7 +225,7 @@
                 if (action === "enter" || (action === "open" && isDir)) { clearSelection(); load(path); }
                 else if (action === "open") openEditor(path, name, size);
                 else if (action === "edit") openEditor(path, name, size);
-                else if (action === "download") download(path, name);
+                else if (action === "download") download(path, name, size);
                 else if (action === "copy") copyEntry(path, name);
                 else if (action === "compress") compressEntry(path, name);
                 else if (action === "extract") extractEntry(path, name);
@@ -295,42 +297,52 @@
         const el = document.getElementById("breadcrumb");
         if (!el) return;
 
-        let html = "";
+        el.replaceChildren();
         if (APP_MODE) {
-
-            html = '<span data-path="" class="lc-crumb">(工作目录)</span>';
+            appendCrumb(el, "", "(工作目录)");
             let acc = "";
             currentPath.split("/").filter(Boolean).forEach(function (p) {
                 acc = acc === "" ? p : acc + "/" + p;
-                html += '<span class="lc-crumb-sep">/</span><span data-path="' + acc + '" class="lc-crumb">' + escapeHtml(p) + '</span>';
+                appendCrumb(el, acc, p, "/");
             });
         } else if (currentPath === "drives") {
-            html = '<span data-path="drives" class="lc-crumb">根</span>';
+            appendCrumb(el, "drives", "根");
         } else if (effectiveOs() === "windows") {
-
-            html = '<span data-path="drives" class="lc-crumb">根</span>';
+            appendCrumb(el, "drives", "根");
             let acc = "";
             currentPath.split("\\").filter(Boolean).forEach(function (p, i) {
                 acc = i === 0 ? p + "\\" : acc + p + "\\";
-                html += '<span class="lc-crumb-sep">\\</span><span data-path="' + acc + '" class="lc-crumb">' + escapeHtml(p) + '</span>';
+                appendCrumb(el, acc, p, "\\");
             });
         } else {
-
-            html = '<span data-path="/" class="lc-crumb">根</span>';
+            appendCrumb(el, "/", "根");
             let acc = "";
             currentPath.split("/").filter(Boolean).forEach(function (p) {
                 acc += "/" + p;
-                html += '<span class="lc-crumb-sep">/</span><span data-path="' + acc + '" class="lc-crumb">' + escapeHtml(p) + '</span>';
+                appendCrumb(el, acc, p, "/");
             });
         }
-        el.innerHTML = html;
         bindCrumbs(el);
+    }
+
+    function appendCrumb(el, path, label, separator) {
+        if (separator) {
+            const sep = document.createElement("span");
+            sep.className = "lc-crumb-sep";
+            sep.textContent = separator;
+            el.appendChild(sep);
+        }
+        const crumb = document.createElement("span");
+        crumb.className = "lc-crumb";
+        crumb.dataset.path = path;
+        crumb.textContent = label;
+        el.appendChild(crumb);
     }
 
     function bindCrumbs(el) {
         el.querySelectorAll(".lc-crumb").forEach(function (c) {
             c.addEventListener("click", function () {
-                const dp = c.getAttribute("data-path");
+                const dp = c.dataset.path;
                 if (dp === "drives" || dp === "/" || dp === "") { goRoot(); }
                 else { load(dp); }
             });
@@ -416,7 +428,12 @@
 
 
 
-    function download(path, name) {
+    function download(path, name, size) {
+        const MAX_DOWNLOAD_BYTES = 20 * 1024 * 1024 * 1024;
+        if (size && size > MAX_DOWNLOAD_BYTES) {
+            LC.dialog.alert("文件过大 (" + window.app.formatSize(size) + " > 20GB), 请使用 SCP/FTP 等工具传输");
+            return;
+        }
         const a = document.createElement("a");
         a.href = "/api" + api("/download?path=" + encodeURIComponent(path));
         a.download = name || "download";
@@ -456,7 +473,7 @@
             cb.checked = !allChecked;
             const p = decodeURIComponent(cb.getAttribute("data-path"));
             if (!allChecked) {
-                selected.set(p, { name: cb.getAttribute("data-name"), dir: cb.getAttribute("data-dir") === "1" });
+                selected.set(p, { name: cb.getAttribute("data-name"), dir: cb.getAttribute("data-dir") === "1", size: parseInt(cb.getAttribute("data-size"), 10) || 0 });
             } else {
                 selected.delete(p);
             }
@@ -483,7 +500,7 @@
     function batchDownload() {
         const items = Array.from(selected.entries()).filter(function (kv) { return !kv[1].dir; });
         items.forEach(function (kv) {
-            download(kv[0], kv[1].name);
+            download(kv[0], kv[1].name, kv[1].size);
         });
     }
 
@@ -565,7 +582,11 @@
                 document.getElementById("zip-modal").style.display = "flex";
             }
         } catch (e) {
-            LC.dialog.alert(e.message || "检测 7zip 失败");
+            const msg = String(e && e.message || "");
+            LC.dialog.alert(
+                (msg.indexOf("权限不足") !== -1 || msg.indexOf("缺少 lingconsole") !== -1)
+                    ? "检测/安装 7zip 需要「包管理器」权限, 请联系管理员"
+                    : (msg || "检测 7zip 失败"));
         }
     }
 

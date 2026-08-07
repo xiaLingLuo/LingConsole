@@ -11,7 +11,7 @@
         <span class="lc-header__meta" id="header-time">--</span>
     </header>
 
-    <section class="lc-content">
+    <section class="lc-content" id="admin-dashboard">
         <div class="lc-grid lc-grid--4">
             <div class="lc-card lc-stat">
                 <div class="lc-stat__label">节点总数</div>
@@ -63,6 +63,39 @@
                     </tbody>
                 </table>
             </div>
+        </div>
+    </section>
+
+    
+    <section class="lc-content" id="user-dashboard" style="display:none">
+        <div class="lc-card">
+            <div class="lc-card__header">
+                <h2 class="lc-card__title">我的操作日志</h2>
+            </div>
+            <div class="lc-card__body">
+                <table class="lc-table">
+                    <thead>
+                    <tr>
+                        <th>时间</th>
+                        <th>操作</th>
+                        <th>目标</th>
+                        <th>详情</th>
+                    </tr>
+                    </thead>
+                    <tbody id="user-logs-tbody">
+                    <tr><td colspan="4" class="lc-table__empty">加载中...</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </section>
+
+    
+    <section class="lc-content" id="no-permission-hint" style="display:none">
+        <div class="lc-no-node">
+            <div class="lc-no-node__icon">⚙</div>
+            <div class="lc-no-node__title">当前账户未分配任何权限</div>
+            <div class="lc-no-node__desc">请联系管理员为您分配权限。</div>
         </div>
     </section>
 </main>

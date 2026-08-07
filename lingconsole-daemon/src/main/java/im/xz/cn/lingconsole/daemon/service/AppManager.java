@@ -17,19 +17,18 @@
  */
 package im.xz.cn.lingconsole.daemon.service;
 
-import im.xz.cn.lingconsole.common.config.TomlConfig;
-import im.xz.cn.lingconsole.common.util.IdUtil;
 import im.xz.cn.lingconsole.daemon.model.AppConfig;
 import im.xz.cn.lingconsole.daemon.model.AppInfo;
+import im.xz.cn.lingconsole.common.util.AtomicFileWriter;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.StandardCopyOption;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 
 
 public class AppManager {
@@ -37,10 +36,26 @@ public class AppManager {
     private static final Logger log = LoggerFactory.getLogger(AppManager.class);
 
     private final Path appsRoot;
+    private final int outputBufferLines;
+    private final boolean softShutdownEnabled;
+    private final int softShutdownWaitSeconds;
     private final Map<String, AppProcess> processes = new ConcurrentHashMap<>();
+    private final Map<String, Object> appLocks = new ConcurrentHashMap<>();
 
     public AppManager(String appsDir) {
+        this(appsDir, 2000);
+    }
+
+    public AppManager(String appsDir, int outputBufferLines) {
+        this(appsDir, outputBufferLines, false, 1);
+    }
+
+    public AppManager(String appsDir, int outputBufferLines, boolean softShutdownEnabled,
+                      int softShutdownWaitSeconds) {
         this.appsRoot = Path.of(appsDir);
+        this.outputBufferLines = outputBufferLines;
+        this.softShutdownEnabled = softShutdownEnabled;
+        this.softShutdownWaitSeconds = softShutdownWaitSeconds;
     }
 
     public void start() {
@@ -58,7 +73,7 @@ public class AppManager {
             }
             AppProcess proc = processes.computeIfAbsent(info.getId(), key -> {
                 AppConfig cfg = loadConfig(key);
-                return cfg == null ? null : new AppProcess(cfg, this);
+                return cfg == null ? null : new AppProcess(cfg, this, outputBufferLines);
             });
             if (proc != null && !proc.isRunning()) {
                 log.info("应用 [{}] autoStart, 正在启动...", info.getName());
@@ -69,7 +84,25 @@ public class AppManager {
     }
 
     public void stop() {
-        processes.values().forEach(AppProcess::destroyNow);
+        try (ExecutorService executor = Executors.newVirtualThreadPerTaskExecutor()) {
+            List<java.util.concurrent.Future<Void>> stops = processes.values().stream()
+                    .map(process -> executor.submit((java.util.concurrent.Callable<Void>) () -> {
+                        if (softShutdownEnabled) {
+                            process.stop(softShutdownWaitSeconds);
+                        } else {
+                            process.destroyNow();
+                        }
+                        return null;
+                    }))
+                    .toList();
+            for (java.util.concurrent.Future<Void> stop : stops) {
+                try {
+                    stop.get(softShutdownWaitSeconds + 5L, java.util.concurrent.TimeUnit.SECONDS);
+                } catch (Exception e) {
+                    log.warn("停止应用进程失败或超时", e);
+                }
+            }
+        }
         processes.clear();
     }
 
@@ -147,6 +180,7 @@ public class AppManager {
         info.setEncoding(config.getEncoding());
         info.setPtyType(config.getPtyType());
         info.setEnvironment(config.getEnvironment());
+        info.setProtectAppFilesFromSymlinkEscape(config.isProtectAppFilesFromSymlinkEscape());
 
         AppProcess proc = processes.get(config.getId());
         if (proc != null) {
@@ -172,13 +206,16 @@ public class AppManager {
         if (!validId(id)) {
             throw new IllegalArgumentException("应用 ID 仅允许小写英文字母和阿拉伯数字");
         }
-        if (processes.containsKey(id) || appsRoot.resolve(id).toFile().exists()) {
-            throw new IllegalArgumentException("应用 ID 已存在: " + id);
-        }
-        Path dir = appsRoot.resolve(id);
-        try {
-            Files.createDirectories(dir.resolve("config"));
-            Files.createDirectories(dir.resolve("data"));
+        synchronized (lockFor(id)) {
+            Path dir = appsRoot.resolve(id);
+            boolean reserved = false;
+            AppProcess proc = null;
+            try {
+                Files.createDirectories(appsRoot);
+                Files.createDirectory(dir);
+                reserved = true;
+                Files.createDirectories(dir.resolve("config"));
+                Files.createDirectories(dir.resolve("data"));
 
             AppConfig config = new AppConfig();
             config.setId(id);
@@ -196,26 +233,50 @@ public class AppManager {
                 config.setEnvironment(new LinkedHashMap<>(environment));
             }
 
-            Files.writeString(dir.resolve("config").resolve("config.toml"), config.toToml());
-            AppProcess proc = new AppProcess(config, this);
-            processes.put(id, proc);
-            log.info("应用已创建: {} ({})", config.getName(), id);
-            if (config.isAutoStart()) {
-                proc.start();
+                AtomicFileWriter.writeString(dir.resolve("config").resolve("config.toml"), config.toToml());
+                proc = new AppProcess(config, this, outputBufferLines);
+                processes.put(id, proc);
+                log.info("应用已创建: {} ({})", config.getName(), id);
+                if (config.isAutoStart()) {
+                    proc.start();
+                }
+                return toInfo(config);
+            } catch (java.nio.file.FileAlreadyExistsException e) {
+                throw new IllegalArgumentException("应用 ID 已存在: " + id);
+            } catch (Exception e) {
+                if (proc != null) {
+                    processes.remove(id, proc);
+                    proc.destroyNow();
+                }
+                if (reserved) {
+                    try {
+                        deleteRecursively(dir);
+                    } catch (IOException cleanupError) {
+                        e.addSuppressed(cleanupError);
+                    }
+                }
+                log.error("创建应用失败: {}", name, e);
+                throw new IllegalStateException("创建应用失败: " + e.getMessage(), e);
             }
-            return toInfo(config);
-        } catch (IOException e) {
-            log.error("创建应用失败: {}", name, e);
-            throw new IllegalStateException("创建应用失败: " + e.getMessage());
         }
     }
 
     
     public AppInfo update(String id, String name, String command, String type,
-                          boolean autoStart, boolean autoRestart, int maxRestartCount,
-                          List<String> args, Map<String, String> environment,
-                          String workDir, String encoding, String ptyType,
-                          String runAsUser) {
+                           boolean autoStart, boolean autoRestart, int maxRestartCount,
+                           List<String> args, Map<String, String> environment,
+                           String workDir, String encoding, String ptyType,
+                           String runAsUser) {
+        return update(id, name, command, type, autoStart, autoRestart, maxRestartCount,
+                args, environment, workDir, encoding, ptyType, runAsUser, null);
+    }
+
+    public AppInfo update(String id, String name, String command, String type,
+                           boolean autoStart, boolean autoRestart, int maxRestartCount,
+                           List<String> args, Map<String, String> environment,
+                           String workDir, String encoding, String ptyType,
+                           String runAsUser, Boolean protectAppFilesFromSymlinkEscape) {
+        synchronized (lockFor(id)) {
         AppConfig config = loadConfig(id);
         if (config == null) {
             return null;
@@ -225,6 +286,9 @@ public class AppManager {
         }
         config.setAutoStart(autoStart);
         config.setAutoRestart(autoRestart);
+        if (protectAppFilesFromSymlinkEscape != null) {
+            config.setProtectAppFilesFromSymlinkEscape(protectAppFilesFromSymlinkEscape);
+        }
 
         
         AppProcess proc = processes.get(id);
@@ -261,12 +325,16 @@ public class AppManager {
             log.info("应用 [{}] 运行中, 仅应用名称/自动启动/自动重启可修改", id);
         }
         try {
-            Files.writeString(configPath(id), config.toToml());
+            AtomicFileWriter.writeString(configPath(id), config.toToml());
+            if (!running && proc != null) {
+                processes.replace(id, proc, new AppProcess(config, this, outputBufferLines));
+            }
         } catch (IOException e) {
             log.error("更新应用配置失败: {}", id, e);
             throw new IllegalStateException("更新应用配置失败: " + e.getMessage());
         }
         return toInfo(config);
+        }
     }
 
     
@@ -289,6 +357,7 @@ public class AppManager {
         if (!validId(id)) {
             return false;
         }
+        synchronized (lockFor(id)) {
         AppProcess proc = processes.remove(id);
         if (proc != null) {
             proc.destroyNow();
@@ -305,6 +374,7 @@ public class AppManager {
             log.error("删除应用目录失败: {}", dir, e);
             throw new IllegalStateException("删除应用目录失败: " + e.getMessage());
         }
+        }
     }
 
     
@@ -312,36 +382,42 @@ public class AppManager {
     
 
     public AppInfo start(String id) {
+        synchronized (lockFor(id)) {
         AppProcess proc = processes.computeIfAbsent(id, key -> {
             AppConfig cfg = loadConfig(key);
-            return cfg == null ? null : new AppProcess(cfg, this);
+            return cfg == null ? null : new AppProcess(cfg, this, outputBufferLines);
         });
         if (proc == null) {
             return null;
         }
         proc.start();
         return toInfo(Objects.requireNonNull(loadConfig(id)));
+        }
     }
 
     public AppInfo stop(String id) {
+        synchronized (lockFor(id)) {
         AppProcess proc = processes.get(id);
         if (proc == null) {
             return get(id);
         }
         proc.stop();
         return toInfo(Objects.requireNonNull(loadConfig(id)));
+        }
     }
 
     public AppInfo restart(String id) {
+        synchronized (lockFor(id)) {
         AppProcess proc = processes.computeIfAbsent(id, key -> {
             AppConfig cfg = loadConfig(key);
-            return cfg == null ? null : new AppProcess(cfg, this);
+            return cfg == null ? null : new AppProcess(cfg, this, outputBufferLines);
         });
         if (proc == null) {
             return null;
         }
         proc.restart();
         return toInfo(Objects.requireNonNull(loadConfig(id)));
+        }
     }
 
     public AppInfo status(String id) {
@@ -370,6 +446,14 @@ public class AppManager {
         return cfg.getWorkDir();
     }
 
+    public boolean protectAppFilesFromSymlinkEscape(String id) {
+        AppConfig cfg = loadConfig(id);
+        if (cfg == null) {
+            throw new IllegalArgumentException("应用不存在: " + id);
+        }
+        return cfg.isProtectAppFilesFromSymlinkEscape();
+    }
+
     
     public void notifyExit(AppProcess proc) {
         
@@ -378,6 +462,10 @@ public class AppManager {
 
     private Path configPath(String id) {
         return appsRoot.resolve(id).resolve("config").resolve("config.toml");
+    }
+
+    private Object lockFor(String id) {
+        return appLocks.computeIfAbsent(id == null ? "" : id, ignored -> new Object());
     }
 
     private void deleteRecursively(Path dir) throws IOException {

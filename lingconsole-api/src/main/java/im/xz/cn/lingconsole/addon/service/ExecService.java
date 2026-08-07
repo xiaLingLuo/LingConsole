@@ -21,7 +21,5 @@ import im.xz.cn.lingconsole.addon.ExecResult;
 
 
 public interface ExecService {
-
-    
     ExecResult exec(String nodeId, String command, long timeoutMs);
 }

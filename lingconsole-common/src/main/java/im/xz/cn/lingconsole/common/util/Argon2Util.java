@@ -20,8 +20,6 @@ package im.xz.cn.lingconsole.common.util;
 import org.bouncycastle.crypto.generators.Argon2BytesGenerator;
 import org.bouncycastle.crypto.params.Argon2Parameters;
 import org.bouncycastle.util.encoders.Hex;
-
-import java.nio.charset.StandardCharsets;
 import java.security.SecureRandom;
 import java.util.regex.Pattern;
 
@@ -34,6 +32,14 @@ public final class Argon2Util {
     private static final int PARALLELISM = 4;
     private static final int SALT_LENGTH = 16;
     private static final int HASH_LENGTH = 32;
+    private static final int MIN_MEMORY_KIB = 8 * 1024;
+    private static final int MAX_MEMORY_KIB = 256 * 1024;
+    private static final int MAX_ITERATIONS = 10;
+    private static final int MAX_PARALLELISM = 16;
+    private static final int MIN_SALT_LENGTH = 8;
+    private static final int MAX_SALT_LENGTH = 64;
+    private static final int MIN_HASH_LENGTH = 16;
+    private static final int MAX_HASH_LENGTH = 64;
 
     private static final Pattern PATTERN =
             Pattern.compile("^argon2id\\$v=19\\$m=\\d+,t=\\d+,p=\\d+\\$([0-9a-f]+)\\$([0-9a-f]+)$");
@@ -46,6 +52,9 @@ public final class Argon2Util {
     }
 
     public static String hash(String password, byte[] salt, int memoryKib, int iterations, int parallelism, int hashLength) {
+        if (password == null || !parametersAllowed(salt, memoryKib, iterations, parallelism, hashLength)) {
+            throw new IllegalArgumentException("Argon2 参数超出安全范围");
+        }
         Argon2Parameters.Builder builder = new Argon2Parameters.Builder(Argon2Parameters.ARGON2_id)
                 .withVersion(ARGON_VERSION)
                 .withMemoryAsKB(memoryKib)
@@ -68,10 +77,23 @@ public final class Argon2Util {
         if (!m.matches()) {
             return false;
         }
-        byte[] salt = Hex.decode(m.group(1));
-        byte[] expected = Hex.decode(m.group(2));
-        
-        int[] params = parseParams(encoded);
+        if (m.group(1).length() < MIN_SALT_LENGTH * 2 || m.group(1).length() > MAX_SALT_LENGTH * 2
+                || m.group(2).length() < MIN_HASH_LENGTH * 2 || m.group(2).length() > MAX_HASH_LENGTH * 2) {
+            return false;
+        }
+        byte[] salt;
+        byte[] expected;
+        int[] params;
+        try {
+            salt = Hex.decode(m.group(1));
+            expected = Hex.decode(m.group(2));
+            params = parseParams(encoded);
+        } catch (RuntimeException e) {
+            return false;
+        }
+        if (!parametersAllowed(salt, params[0], params[1], params[2], expected.length)) {
+            return false;
+        }
         byte[] actual = new byte[expected.length];
         Argon2Parameters.Builder builder = new Argon2Parameters.Builder(Argon2Parameters.ARGON2_id)
                 .withVersion(ARGON_VERSION)
@@ -101,6 +123,15 @@ public final class Argon2Util {
         int t = Integer.parseInt(kv[1].substring(2));
         int p = Integer.parseInt(kv[2].substring(2));
         return new int[]{m, t, p};
+    }
+
+    private static boolean parametersAllowed(byte[] salt, int memoryKib, int iterations,
+                                             int parallelism, int hashLength) {
+        return salt != null && salt.length >= MIN_SALT_LENGTH && salt.length <= MAX_SALT_LENGTH
+                && memoryKib >= MIN_MEMORY_KIB && memoryKib <= MAX_MEMORY_KIB
+                && iterations >= 1 && iterations <= MAX_ITERATIONS
+                && parallelism >= 1 && parallelism <= MAX_PARALLELISM
+                && hashLength >= MIN_HASH_LENGTH && hashLength <= MAX_HASH_LENGTH;
     }
 
     private static byte[] generateSalt() {

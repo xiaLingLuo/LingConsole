@@ -21,6 +21,7 @@ import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 
 class TerminalTicketStoreTest {
 
@@ -50,5 +51,47 @@ class TerminalTicketStoreTest {
         TerminalTicketStore store = new TerminalTicketStore(-1);
         String ticket = store.issue("user-a", "node1", "");
         assertNull(store.consume(ticket, "user-a"), "过期票据应被拒绝");
+        store.cleanup();
+        assertEquals(0, store.size());
+        store.close();
+    }
+
+    @Test
+    void concurrentConsumptionHasSingleWinner() throws Exception {
+        try (TerminalTicketStore store = new TerminalTicketStore()) {
+            String ticket = store.issue("user-a", "node1", "");
+            java.util.concurrent.ExecutorService pool = java.util.concurrent.Executors.newFixedThreadPool(8);
+            try {
+                java.util.List<java.util.concurrent.Future<TerminalTicketStore.Ticket>> results =
+                        new java.util.ArrayList<>();
+                for (int i = 0; i < 32; i++) {
+                    results.add(pool.submit(() -> store.consume(ticket, "user-a")));
+                }
+                assertEquals(1, results.stream().filter(result -> {
+                    try { return result.get() != null; } catch (Exception e) { throw new RuntimeException(e); }
+                }).count());
+            } finally {
+                pool.shutdownNow();
+            }
+        }
+    }
+
+    @Test
+    void enforcesGlobalUserAndIpLimits() {
+        try (TerminalTicketStore userLimited = new TerminalTicketStore(60_000, 3, 1, 10)) {
+            userLimited.issue("user-a", "node1", "", "ip-a");
+            assertThrows(TerminalTicketStore.LimitExceededException.class,
+                    () -> userLimited.issue("user-a", "node1", "", "ip-a"));
+        }
+        try (TerminalTicketStore ipLimited = new TerminalTicketStore(60_000, 3, 3, 1)) {
+            ipLimited.issue("user-a", "node1", "", "ip-a");
+            assertThrows(TerminalTicketStore.LimitExceededException.class,
+                    () -> ipLimited.issue("user-b", "node1", "", "ip-a"));
+        }
+        try (TerminalTicketStore globalLimited = new TerminalTicketStore(60_000, 1, 1, 10)) {
+            globalLimited.issue("user-a", "node1", "", "ip-a");
+            assertThrows(TerminalTicketStore.LimitExceededException.class,
+                    () -> globalLimited.issue("user-b", "node1", "", "ip-b"));
+        }
     }
 }

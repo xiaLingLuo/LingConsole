@@ -22,19 +22,9 @@ import java.util.Map;
 
 
 public interface FileService {
-
-    
     List<Map<String, Object>> listFiles(String nodeId, String path);
-
-    
     String readFile(String nodeId, String path);
-
-    
     boolean writeFile(String nodeId, String path, String content);
-
-    
     boolean deleteFile(String nodeId, String path);
-
-    
     boolean createDirectory(String nodeId, String path);
 }

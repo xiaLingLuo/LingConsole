@@ -17,10 +17,13 @@
  */
 package im.xz.cn.lingconsole.common.addon;
 
+import java.util.Set;
+
 /**
  * 插件反向代理配置。
- * 将面板 /api/addon/&lt;addonName&gt;&lt;mountPath&gt;/* 转发到后端。
+ * 面板 /api/addon/&lt;addonName&gt;&lt;mountPath&gt;/* 转发到后端
  * requiredPermission: null 表示默认 (permission.assign), "*" 表示任意已登录用户。
+ * forwardHeaders: 显式声明允许转发到后端的请求头。默认仅转发安全头, Cookie/Authorization 等敏感头需显式声明
  */
 public record AddonProxy(
         String addonName,
@@ -29,5 +32,6 @@ public record AddonProxy(
         String host,
         int port,
         String basePath,
-        String requiredPermission) {
+        String requiredPermission,
+        Set<String> forwardHeaders) {
 }

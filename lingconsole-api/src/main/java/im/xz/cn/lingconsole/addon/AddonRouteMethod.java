@@ -17,7 +17,12 @@
  */
 package im.xz.cn.lingconsole.addon;
 
-
 public enum AddonRouteMethod {
-    GET, POST, PUT, DELETE, PATCH, HEAD, OPTIONS
+    GET,
+    POST,
+    PUT,
+    DELETE,
+    PATCH,
+    HEAD,
+    OPTIONS
 }

@@ -17,9 +17,7 @@
  */
 package im.xz.cn.lingconsole.addon;
 
-
 public record ExecResult(int exitCode, String stdout, String stderr, boolean timedOut) {
-
     public boolean success() {
         return exitCode == 0;
     }

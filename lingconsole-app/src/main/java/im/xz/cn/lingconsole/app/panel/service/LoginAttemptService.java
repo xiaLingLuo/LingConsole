@@ -19,6 +19,9 @@ package im.xz.cn.lingconsole.app.panel.service;
 
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.TimeUnit;
 
 
 public class LoginAttemptService {
@@ -29,7 +32,7 @@ public class LoginAttemptService {
         long firstFailure;
     }
 
-    
+
     private static final int MAX_ENTRIES = 10_000;
 
     private final Map<String, Attempt> attempts = new ConcurrentHashMap<>();
@@ -37,12 +40,40 @@ public class LoginAttemptService {
     private final int ipMaxAttempts;
     private final long lockoutMillis;
     private final int ratePerSecond;
+    private final ScheduledExecutorService cleanupScheduler =
+            Executors.newSingleThreadScheduledExecutor(r -> {
+                Thread t = new Thread(r, "login-attempt-cleanup");
+                t.setDaemon(true);
+                return t;
+            });
 
     public LoginAttemptService(int maxAttempts, int lockoutSeconds, int ratePerSecond) {
         this.maxAttempts = Math.max(1, maxAttempts);
         this.ipMaxAttempts = Math.max(1, maxAttempts) * 3;
         this.lockoutMillis = Math.max(1, lockoutSeconds) * 1000L;
         this.ratePerSecond = Math.max(1, ratePerSecond);
+        cleanupScheduler.scheduleAtFixedRate(this::evictPeriodic, 5, 5, TimeUnit.MINUTES);
+    }
+
+    public void shutdown() {
+        cleanupScheduler.shutdownNow();
+    }
+
+
+    private void evictPeriodic() {
+        try {
+            evictExpired();
+            long cutoff = System.currentTimeMillis() / 1000 - IP_ENTRY_TTL_MILLIS / 1000;
+            ipCounts.entrySet().removeIf(e -> e.getValue()[0] < cutoff);
+            if (ipCounts.size() > MAX_IP_ENTRIES) {
+                ipCounts.clear();
+            }
+            if (attempts.size() > MAX_ENTRIES) {
+                evictOldest();
+            }
+        } catch (Exception e) {
+            assert true;
+        }
     }
 
     
@@ -152,11 +183,20 @@ public class LoginAttemptService {
     private final Map<String, long[]> ipCounts = new ConcurrentHashMap<>();
 
     
+    private static final int MAX_IP_ENTRIES = 50_000;
+
+    
+    private static final long IP_ENTRY_TTL_MILLIS = 60_000;
+
+    
     public boolean isIpRateExceeded(String ip) {
         String k = ip == null ? "" : ip;
         long now = System.currentTimeMillis();
         long second = now / 1000;
-        long[] entry = ipCounts.computeIfAbsent(k, x -> new long[]{second, 0});
+        long[] entry = ipCounts.computeIfAbsent(k, x -> {
+            evictStaleIpCounts(second);
+            return new long[]{second, 0};
+        });
         synchronized (entry) {
             if (entry[0] != second) {
                 entry[0] = second;
@@ -164,6 +204,18 @@ public class LoginAttemptService {
             }
             entry[1]++;
             return entry[1] > ratePerSecond;
+        }
+    }
+
+    
+    private void evictStaleIpCounts(long currentSecond) {
+        if (ipCounts.size() <= MAX_IP_ENTRIES) {
+            return;
+        }
+        long cutoff = currentSecond - IP_ENTRY_TTL_MILLIS / 1000;
+        ipCounts.entrySet().removeIf(e -> e.getValue()[0] < cutoff);
+        if (ipCounts.size() > MAX_IP_ENTRIES) {
+            ipCounts.clear();
         }
     }
 

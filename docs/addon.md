@@ -1,334 +1,127 @@
-# 插件 API 文档
+# 插件 API 1.2.8
 
-本页是插件开发 API 的完整参考。
+插件 API 由 `lingconsole-api.jar` 提供。插件在 LingConsole JVM 内运行，安装插件即代表你信任插件代码。
 
-- [插件开发教程](docs/plugin-guide.md) — 从零写一个插件的完整步骤
-- [控制台指令](docs/commands.md) · [WebUI 使用](docs/usage.md) · [安装部署](docs/install.md)
+## 描述文件
 
----
-
-## 1. 插件描述 `addon.toml`
-
-JAR **根目录**放置 `addon.toml`：
+JAR 根目录必须包含 `addon.toml`：
 
 ```toml
-name = "myaddon"                # 插件名 (要求唯一)
-version = "1.0.0"
-main = "com.example.MyAddon"    # 主类
-author = "You"
-description = "说明"
-api-version = "1.1.86"             # API 版本
-
-dependencies = ["other-addon"]        # 可选: 硬依赖
-soft-dependencies = ["optional-helper"]  # 可选: 软依赖
+name = "myaddon"
+version = "1.2.8"
+main = "com.example.MyAddon"
+author = "Example"
+description = "Example addon"
+api-version = "1.2.8"
+dependencies = ["required-addon"]
+soft-dependencies = ["optional-addon"]
 ```
 
-## 2. 生命周期 `Addon`
+`name` 是权限、命令和资源所有权的命名空间，必须唯一。硬依赖缺失或形成硬依赖环时插件不会加载；软依赖存在时用于调整加载顺序。
+
+## 生命周期
 
 ```java
 public interface Addon {
-    default void onLoad(AddonContext ctx) { }    // 加载
-    default void onEnable(AddonContext ctx) { }  // 启用
-    default void onDisable() { }                 // 停用
+    default void onLoad(AddonContext context) {}
+    default void onEnable(AddonContext context) {}
+    default void onDisable() {}
 }
 ```
 
-- `onLoad` 抛异常 → 插件进入 `ERROR` 状态（`[ERR]`），不影响宿主与其他插件
-- 热重载会完整重建插件
+`onLoad` 用于注册配置和扩展，`onEnable` 启动业务，`onDisable` 释放插件自行持有的资源。宿主会关闭插件上下文、调度器和类加载器，并注销路由、命令、权限、菜单、代理和 Socket 事件。生命周期异常只会将该插件标记为 `ERROR`。
 
-## 3. 上下文 `AddonContext`
+## AddonContext
 
-路由/服务全部通过 `AddonContext` 访问：
+| 方法 | 说明 |
+|---|---|
+| `info()`, `logger()` | 描述信息与插件日志 |
+| `nodes()`, `apps()`, `files()` | 节点、应用和文件服务 |
+| `monitor()`, `exec()` | 监控和远程命令服务 |
+| `users()`, `logs()` | 用户查询和审计记录 |
+| `data()` | SQLite 插件 KV 数据 |
+| `config()` | 声明式 YAML 配置 |
+| `registerPanelRoute(...)` | Panel HTTP API |
+| `registerDaemonRoute(...)` | Daemon Key 保护的 HTTP API |
+| `registerSocketEvent(...)` | 仅 Panel 的权限化 Socket 事件 |
+| `registerPanelProxy(...)` | Panel 反向代理 |
+| `registerPermission(...)` | 动态权限节点 |
+| `registerPanelMenu(...)` | 面板菜单 |
+| `registerCommand(...)` | 控制台命令 |
+| `scheduler()` | 插件专用单线程调度器 |
+| `dataDir()`, `addonDataDir()` | 全局和插件私有目录 |
 
-| 方法                                   | 说明                                                                          |
-|----------------------------------------|-------------------------------------------------------------------------------|
-| `AddonInfo info()`                     | 插件信息（name/version/mainClass/author/description/apiVersion/dependencies） |
-| `AddonLogger logger()`                 | 日志（`info/warn/error/debug`，前缀 `[插件名]`）                              |
-| `NodeService nodes()`                  | 节点查询服务                                                                  |
-| `AppService apps()`                    | 应用管理服务                                                                  |
-| `FileService files()`                  | 文件系统服务                                                                  |
-| `MonitorService monitor()`             | 节点监控服务                                                                  |
-| `ExecService exec()`                   | 远程命令执行服务                                                              |
-| `DataService data()`                   | 插件 KV 持久化                                                                |
-| `UserService users()`                  | 用户查询服务                                                                  |
-| `LogService logs()`                    | 操作审计日志                                                                  |
-| `ConfigService config()`               | 标准配置                                                                      |
-| `registerPanelRoute(...)`              | 注册面板路由                                                                  |
-| `registerDaemonRoute(...)`             | 注册 Daemon 路由                                                              |
-| `registerCommand(...)`                 | 注册控制台指令                                                                |
-| `registerPermission(key, label)`       | 注册插件权限节点（自动挂到 `<插件名>.<key>`）                                 |
-| `registerSocketEvent(...)`             | 注册 Socket.IO 事件                                                           |
-| `registerPanelMenu(label, url)`        | 侧栏菜单项                                                                    |
-| `registerPanelProxy(...)`              | 反向代理到任意 HTTP 后端                                                      |
-| `ScheduledExecutorService scheduler()` | 单线程定时调度器                                                              |
-| `Path dataDir()`                       | 全局数据目录 `/lingConsole`                                                   |
-| `Path addonDataDir()`                  | 插件私有目录 `addons/<name>/`                                                 |
+上下文关闭后继续调用其服务适配器会抛出 `IllegalStateException`。
 
-常量 `AddonContext.PUBLIC = "*"`：路由权限标记，表示**任意已登录用户均可访问**。
-
-## 4. 路由系统
-
-### 4.1 `AddonRouteMethod`
+## Panel 路由
 
 ```java
-public enum AddonRouteMethod { GET, POST, PUT, DELETE, PATCH, HEAD, OPTIONS }
+ctx.registerPanelRoute(AddonRouteMethod.GET, "/status",
+        h -> h.json(Map.of("ok", true)), "status.read");
 ```
 
-### 4.2 `AddonRouteHandler`
+挂载到 `/api/addon/<addonName>/status`。相对权限自动变为 `<addonName>.status.read`。不传权限时默认要求 `lingconsole.permission.assign`；传 `AddonContext.PUBLIC` 时允许任意已登录用户。Panel 通用认证、Origin 校验和安全响应头仍然生效。
+
+处理器类型为 `AddonRouteHandler`，参数是 Javalin 7 `Context`。支持 `GET`、`POST`、`PUT`、`DELETE`、`PATCH`、`HEAD` 和 `OPTIONS`。
+
+## Daemon 路由
 
 ```java
-@FunctionalInterface
-public interface AddonRouteHandler {
-    void handle(io.javalin.http.Context ctx);   // Javalin Context
-}
+ctx.registerDaemonRoute(AddonRouteMethod.GET, "/health",
+        h -> h.json(Map.of("status", "ok")));
 ```
 
-处理器直接拿到 **Javalin 7 的 `Context`**，
+挂载到 `/consoleapi/addon/<addonName>/health`，由 Daemon Key 和 Daemon IP/速率策略保护。Daemon 没有 Panel 用户身份，因此这里不接受用户权限键。需要实时 Panel 用户授权时使用 Panel 路由或 Panel Socket。
 
-可用：`h.json(obj)`、`h.result(str)`、`h.status(int)`、`h.header(k,v)`、`h.queryParam(name)`、`h.pathParam(name)`、`h.bodyAsClass(Map.class)`、`h.uploadedFile(name)` 等。
-
-### 4.3 面板路由 `registerPanelRoute`
+## Panel Socket
 
 ```java
-void registerPanelRoute(AddonRouteMethod method, String path, AddonRouteHandler handler);
-void registerPanelRoute(AddonRouteMethod method, String path, AddonRouteHandler handler,
-                        String requiredPermission);
+ctx.registerSocketEvent("/panel", "myaddon:refresh", "status.read",
+        (connection, event, data) -> connection.emit(event, data));
 ```
 
-- 挂载路径：`/api/addon/<插件名><path>`
-- **默认权限 `permission.assign`**（root（或拥有 permission.assign 的用户））；显式传 `AddonContext.PUBLIC` 放行为任意登录用户
-- 自定义权限串自动挂到 `<插件名>.<权限>` 命名空间（插件权限根 = 插件名），并自动注册进权限表供"权限组管理"页预览；也可用 `ctx.registerPermission(key, label)` 显式声明
+Socket 事件只注册到 Panel Socket 服务器，调用时重新验证 Panel 会话和声明权限。`requiredPermission` 必填，可使用相对插件权限、完整 `lingconsole.*` 权限或 `AddonContext.PUBLIC`。事件不会挂载到 Daemon Socket。
+
+`AddonSocketConnection` 提供 `sessionId()`、`emit()` 和 `close()`。
+
+## Panel 反向代理
 
 ```java
-ctx.registerPanelRoute(AddonRouteMethod.GET, "/info", h -> {
-    h.json(Map.of("name", ctx.info().name(), "config", ctx.config().values()));
-}, AddonContext.PUBLIC);
-
-ctx.registerPanelRoute(AddonRouteMethod.POST, "/echo",
-        h -> h.json(Map.of("received", h.bodyAsClass(Map.class))), AddonContext.PUBLIC);
+ctx.registerPanelProxy("/service", "http", "127.0.0.1", 8080, "/api",
+        "service.use", Set.of("authorization"));
 ```
 
-### 4.4 Daemon 路由 `registerDaemonRoute`
+访问 `/api/addon/<addonName>/service/...` 时转发到插件声明的后端。默认权限为 `lingconsole.permission.assign`。默认只转发安全请求头，不转发 Cookie、Authorization、`X-LingConsole-Token`、Daemon Key 或 hop-by-hop 头；额外头必须以小写名称显式列出。代理目标由可信插件控制，具备 SSRF 能力。
+
+## 配置与数据
 
 ```java
-void registerDaemonRoute(AddonRouteMethod method, String path, AddonRouteHandler handler);
+ctx.config().define("enabled", ConfigType.BOOL, "Enabled", "", "true");
+ctx.config().defineSelect("mode", "Mode", "", "safe", List.of("safe", "fast"));
+boolean enabled = ctx.config().getBoolean("enabled", true);
+
+ctx.data().put("cursor", "42");
+String cursor = ctx.data().get("cursor");
 ```
 
-- 挂载路径：`/consoleapi/addon/<插件名><path>`（需 `X-LingConsole-Key` 认证）
+配置类型为 `STRING`、`TEXT`、`INT`、`BOOL`、`SELECT`，存储于 `addons/<name>/config.yml`。KV 数据存储在 Panel SQLite 的 `addon_data` 表并按插件隔离。`ConfigService.panelConfig()` 和 `daemonConfig()` 返回允许公开给插件的宿主配置摘要，不包含 Daemon Key。
 
-```java
-ctx.registerDaemonRoute(AddonRouteMethod.GET, "/ping",
-        h -> h.json(Map.of("pong", true, "addon", ctx.info().name())));
-```
+## 服务接口
 
-### 4.5 反向代理 `registerPanelProxy`
+| 服务             | 主要方法                                                                             |
+|------------------|--------------------------------------------------------------------------------------|
+| `NodeService`    | `listNodes`, `getNode`, `nodeStatus`                                                 |
+| `AppService`     | `listApps`, `createApp`, `startApp`, `stopApp`, `restartApp`, `appLogs`, `signalApp` |
+| `FileService`    | `listFiles`, `readFile`, `writeFile`, `deleteFile`, `createDirectory`                |
+| `MonitorService` | `snapshot`                                                                           |
+| `ExecService`    | `exec(nodeId, command, timeoutMs)`                                                   |
+| `UserService`    | `listUsers`, `getUser`                                                               |
+| `LogService`     | `record(action, target, detail)`                                                     |
 
-```java
-void registerPanelProxy(String mountPath, String scheme, String host, int port, String basePath);
-void registerPanelProxy(String mountPath, String scheme, String host, int port, String basePath,
-                        String requiredPermission);
-```
+这些服务是可信插件的宿主能力，不继承当前浏览器用户的权限。插件 Panel 入口必须先声明合适的 requiredPermission。Panel 不存在的 only-daemon 模式中，依赖数据库或节点连接的服务可能返回空结果或失败。
 
-把面板路径代理到任意 HTTP 后端（如 phpMyAdmin 的 php-fpm）：
+## 类加载与管理
 
-```java
-ctx.registerPanelProxy("/pm", "http", "127.0.0.1", 55700, "/consoleapi");
-// 访问: /api/addon/<插件名>/pm/...  ->  http://127.0.0.1:55700/consoleapi/...
-```
+每个插件使用独立的子优先类加载器，但 `im.xz.cn.lingconsole.addon.*` 强制使用宿主 API。拥有 `lingconsole.permission.assign` 的用户可以在插件页查看状态、修改配置和热重载。控制台 `addons` 显示加载状态。
 
-> 反向代理不注入 Daemon Key，如需访问受 Key 保护的 `/consoleapi` 需要用 Daemon 路由或服务接口。
-
-## 5. 控制台指令
-
-```java
-void registerCommand(String command, CommandHandler handler);
-```
-
-```java
-@FunctionalInterface
-public interface CommandHandler {
-    void execute(String command, String[] args, CommandSender sender);
-}
-
-public interface CommandSender {
-    void sendMessage(String message);
-}
-```
-
-```java
-ctx.registerCommand("hello", (command, args, sender) ->
-        sender.sendMessage("你好, " + ctx.info().name()));
-ctx.registerCommand("status", (command, args, sender) ->
-        sender.sendMessage("args=" + String.join(",", args)));
-```
-
-详见 [控制台指令](commands)。
-
-## 6. Socket 事件
-
-```java
-void registerSocketEvent(String namespace, String event, AddonSocketHandler handler);
-```
-
-```java
-@FunctionalInterface
-public interface AddonSocketHandler {
-    void handle(AddonSocketConnection connection, String event, Object data);
-}
-public interface AddonSocketConnection {
-    String sessionId();
-    void emit(String event, Object data);
-    void close();
-}
-```
-
-```java
-ctx.registerSocketEvent("/panel", "addon:hello", (conn, event, data) ->
-        conn.emit("addon:hello", Map.of("echo", data, "addon", ctx.info().name())));
-```
-
-## 7. 侧栏菜单
-
-```java
-void registerPanelMenu(String label, String url);
-```
-
-## 8. 标准配置 `ConfigService`
-
-### 8.1 声明配置
-
-```java
-void define(String key, ConfigType type, String label, String description, String defaultValue);
-void defineSelect(String key, String label, String description, String defaultValue,
-                  List<String> options);
-```
-
-`ConfigType`：`STRING` / `TEXT` / `INT` / `BOOL` / `SELECT`。
-
-```java
-ctx.config().define("greeting", ConfigType.STRING, "问候语", "描述", "Hello");
-ctx.config().define("maxCount", ConfigType.INT, "最大次数", "计数器上限", "5");
-ctx.config().define("enabled", ConfigType.BOOL, "启用", "是否启用", "true");
-ctx.config().defineSelect("mode", "运行模式", "仅演示", "auto", List.of("auto", "fast", "safe"));
-```
-
-### 8.2 读取配置
-
-```java
-String  getString(String key, String def);
-int     getInt(String key, int def);
-boolean getBoolean(String key, boolean def);
-List<ConfigEntry> entries();
-Map<String, String> values();
-```
-
-值存储于 `addons/<插件名>/config.yml`；`/addons` 管理页可编辑并**保存即热重载**。
-
-### 8.3 读取宿主配置
-
-```java
-Map<String, Object> panelConfig();   // host/port/sessionTimeout/maxLoginAttempts/lockoutDuration/rateLimitPerSecond/theme/language
-Map<String, Object> daemonConfig();  // host/port/name/whiteListEnabled/authTimeout/maxFileTasks/maxZipSize/outputBufferSize
-Path dataDir();                      // 全局数据目录
-```
-
-## 9. 数据存储 `DataService`
-
-```java
-void put(String key, String value);
-String get(String key);
-void delete(String key);
-Map<String, String> all();
-```
-
-持久化到 SQLite `addon_data` 表，按插件隔离。
-
-## 10. 服务参考
-
-所有服务按节点（`nodeId`）操作，可对接**远端 Daemon**。节点不可达或 only-daemon 下无节点服务时返回空值/失败。
-
-### 10.1 `NodeService`
-
-| 方法                                    | 说明                                    |
-|-----------------------------------------|-----------------------------------------|
-| `List<Map<String,Object>> listNodes()`  | 全部节点（id/name/url/status/style）    |
-| `Map<String,Object> getNode(String id)` | 单节点，不存在返回 null                 |
-| `int nodeStatus(String id)`             | 在线状态（1 在线 / 0 离线 / -1 不存在） |
-
-### 10.2 `AppService`
-
-| 方法                                              | 说明                         |
-|---------------------------------------------------|------------------------------|
-| `listApps(nodeId)`                                | 应用列表                     |
-| `createApp(nodeId, name, command, args, workDir)` | 创建应用，返回含 `id` 的 Map |
-| `startApp / stopApp / restartApp(nodeId, appId)`  | 启停/重启                    |
-| `appLogs(nodeId, appId, count)`                   | 最近日志行                   |
-| `signalApp(nodeId, appId, signal)`                | 发送信号（如 `SIGTERM`）     |
-
-### 10.3 `FileService`
-
-| 方法                               | 说明               |
-|------------------------------------|--------------------|
-| `listFiles(nodeId, path)`          | 目录列表           |
-| `readFile(nodeId, path)`           | 读文件内容（文本） |
-| `writeFile(nodeId, path, content)` | 写文件             |
-| `deleteFile(nodeId, path)`         | 删除文件           |
-| `createDirectory(nodeId, path)`    | 创建目录           |
-
-### 10.4 `MonitorService`
-
-| 方法               | 说明                                      |
-|--------------------|-------------------------------------------|
-| `snapshot(nodeId)` | 系统快照（cpuUsage/memory/network/disks） |
-
-### 10.5 `ExecService`
-
-| 方法                                          | 说明           |
-|-----------------------------------------------|----------------|
-| `ExecResult exec(nodeId, command, timeoutMs)` | 在节点执行命令 |
-
-```java
-public record ExecResult(int exitCode, String stdout, String stderr, boolean timedOut) {
-    public boolean success() { return exitCode == 0; }
-}
-```
-
-> 命令通过 `ProcessBuilder` 直接传参执行（无 shell 注入）。演示：
-> `ctx.exec().exec(nodeId, "nginx -t", 5000)`、`ctx.exec().exec(nodeId, "nginx -s reload", 5000)`。
-
-### 10.6 `UserService`
-
-| 方法          | 说明                                  |
-|---------------|---------------------------------------|
-| `listUsers()` | 全部用户（id/username/role/roleName） |
-| `getUser(id)` | 单用户                                |
-
-### 10.7 `LogService`
-
-| 方法                             | 说明                                            |
-|----------------------------------|-------------------------------------------------|
-| `record(action, target, detail)` | 写入操作审计日志（来源标记为 `addon:<插件名>`） |
-
-## 11. 日志与调度
-
-```java
-ctx.logger().info("xx {}", val);     // 格式同 SLF4J {}
-ctx.scheduler().scheduleAtFixedRate(() -> ctx.logger().debug("tick"),
-        0, 30, TimeUnit.SECONDS);    // 插件专用单线程调度器
-```
-
-## 12. 权限与隔离
-
-- 面板路由默认权限 `permission.assign`（root（或拥有 permission.assign 的用户））；`AddonContext.PUBLIC` 放行为任意登录用户
-- 每插件独立类加载器（**子优先**：插件内嵌依赖优先于宿主），`im.xz.cn.lingconsole.addon.*` API 包强制使用宿主版本
-- 单插件加载/运行失败不影响宿主与其他插件
-
-## 13. only-daemon 模式
-
-`--webui false`，插件系统同样加载：控制台指令、Daemon 路由、Socket 事件、配置/数据服务可用；依赖面板的节点/用户/日志服务返回空值；面板路由/菜单/反代无 Panel 载体时无效。
-
-## 14. 管理
-
-- 管理页 `/addons`（root（或拥有 permission.assign 的用户））：查看状态、编辑配置、**保存并热重载**
-- 热重载自动清理并重建：面板/Daemon 路由、Socket 事件、反代、菜单、控制台指令
-- 控制台 `addons` 指令列出全部插件并标注 `[OK]` / `[ERR]`
+完整示例见 [插件开发教程](plugin-guide.md) 和仓库 `exampleAddon/`。

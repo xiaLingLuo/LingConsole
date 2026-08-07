@@ -26,6 +26,7 @@ import im.xz.cn.lingconsole.app.panel.model.User;
 import im.xz.cn.lingconsole.app.panel.remote.DaemonHttpProxy;
 import im.xz.cn.lingconsole.app.panel.service.LogService;
 import im.xz.cn.lingconsole.app.panel.service.NodeService;
+import im.xz.cn.lingconsole.app.panel.service.DownloadLimiter;
 import im.xz.cn.lingconsole.common.util.ErrorMessageUtil;
 import io.javalin.config.RoutesConfig;
 import io.javalin.http.Context;
@@ -44,11 +45,14 @@ public class FileController {
     private final NodeService nodeService;
     private final DaemonHttpProxy proxy;
     private final LogService logService;
+    private final DownloadLimiter downloadLimiter;
 
-    public FileController(NodeService nodeService, DaemonHttpProxy proxy, LogService logService) {
+    public FileController(NodeService nodeService, DaemonHttpProxy proxy, LogService logService,
+                          DownloadLimiter downloadLimiter) {
         this.nodeService = nodeService;
         this.proxy = proxy;
         this.logService = logService;
+        this.downloadLimiter = downloadLimiter;
     }
 
     public void register(RoutesConfig routes, String prefix) {
@@ -67,8 +71,6 @@ public class FileController {
         routes.post(prefix + "/nodes/{nodeId}/files/archive/compress", this::zipCompress);
         routes.post(prefix + "/nodes/{nodeId}/files/archive/extract", this::zipExtract);
         routes.get(prefix + "/nodes/{nodeId}/files/drives", this::drives);
-
-        
         routes.get(prefix + "/nodes/{nodeId}/apps/{appId}/files/list", this::list);
         routes.get(prefix + "/nodes/{nodeId}/apps/{appId}/files/read", this::read);
         routes.post(prefix + "/nodes/{nodeId}/apps/{appId}/files/write", this::write);
@@ -81,20 +83,17 @@ public class FileController {
         routes.post(prefix + "/nodes/{nodeId}/apps/{appId}/files/archive/compress", this::zipCompress);
         routes.post(prefix + "/nodes/{nodeId}/apps/{appId}/files/archive/extract", this::zipExtract);
     }
-
     
     private void list(Context ctx) {
         requireFilePerm(ctx, false);
         forward(ctx, call(() -> proxy.get(node(ctx), fileApi(ctx, "/list"), Map.of("path", requirePath(ctx)))));
     }
 
-    
     private void read(Context ctx) {
         requireFilePerm(ctx, false);
         forward(ctx, call(() -> proxy.get(node(ctx), fileApi(ctx, "/read"), Map.of("path", requirePath(ctx)))));
     }
 
-    
     private void write(Context ctx) {
         requireFilePerm(ctx, true);
         User user = AuthMiddleware.currentUser(ctx);
@@ -104,7 +103,6 @@ public class FileController {
         logService.record(user.getId(), "file.write", req.path(), "写入文件", ctx.ip());
     }
 
-    
     private void mkdir(Context ctx) {
         requireFilePerm(ctx, true);
         User user = AuthMiddleware.currentUser(ctx);
@@ -112,7 +110,6 @@ public class FileController {
         logService.record(user.getId(), "file.mkdir", ctx.queryParam("path"), "创建目录", ctx.ip());
     }
 
-    
     private void delete(Context ctx) {
         requireFilePerm(ctx, true);
         User user = AuthMiddleware.currentUser(ctx);
@@ -120,7 +117,6 @@ public class FileController {
         logService.record(user.getId(), "file.delete", ctx.queryParam("path"), "删除文件", ctx.ip());
     }
 
-    
     private void upload(Context ctx) {
         requireFilePerm(ctx, true);
         User user = AuthMiddleware.currentUser(ctx);
@@ -139,28 +135,51 @@ public class FileController {
     }
 
     
+    private static final long MAX_DOWNLOAD_BYTES = 20L * 1024 * 1024 * 1024;
+    
     private void download(Context ctx) {
         requireFilePerm(ctx, false);
         Node node = node(ctx);
         String path = requirePath(ctx);
+        User user = AuthMiddleware.currentUser(ctx);
+        DownloadLimiter.Lease lease = downloadLimiter.tryAcquire(node.getId(), user.getId());
+        if (lease == null) {
+            throw new ApiException(429, "下载任务过多，请稍后重试");
+        }
+        boolean streaming = false;
         try {
             HttpResponse<java.io.InputStream> resp = call(() -> proxy.download(node, fileApi(ctx, "/download"), path));
-            try (java.io.InputStream body = resp.body()) {
-                if (resp.statusCode() != 200) {
+            long size = resp.headers().firstValueAsLong("X-Ling-File-Size").orElse(-1L);
+            if (resp.statusCode() != 200) {
+                try (java.io.InputStream body = resp.body()) {
                     ctx.status(resp.statusCode());
                     ctx.json(body.readAllBytes());
-                    return;
                 }
-                String fileName = im.xz.cn.lingconsole.common.util.PathUtil.safeFileName(
-                        Path.of(path));
-                ctx.contentType("application/octet-stream");
-                ctx.header("Content-Disposition",
-                        "attachment; filename=\"" + fileName + "\"; filename*=UTF-8''"
-                                + java.net.URLEncoder.encode(fileName, StandardCharsets.UTF_8).replace("+", "%20"));
-                ctx.result(body.readAllBytes());
+                return;
             }
+            if (size > MAX_DOWNLOAD_BYTES) {
+                try (java.io.InputStream ignored = resp.body()) {
+                    assert true;
+                }
+                ctx.status(200);
+                ctx.json(im.xz.cn.lingconsole.common.model.ApiResponse.error(413,
+                        "文件过大 (应当不超过20GB), 请使用 SCP/FTP 等工具传输"));
+                return;
+            }
+            String fileName = resp.headers().firstValue("X-Ling-File-Name")
+                    .orElse(im.xz.cn.lingconsole.common.util.PathUtil.safeFileName(Path.of(path)));
+            ctx.contentType("application/octet-stream");
+            ctx.header("Content-Disposition",
+                    "attachment; filename=\"" + fileName + "\"; filename*=UTF-8''"
+                            + java.net.URLEncoder.encode(fileName, StandardCharsets.UTF_8).replace("+", "%20"));
+            ctx.result(lease.wrap(resp.body()));
+            streaming = true;
         } catch (Exception e) {
             throw ApiException.badRequest(ErrorMessageUtil.with("下载失败", e));
+        } finally {
+            if (!streaming) {
+                lease.close();
+            }
         }
     }
 
@@ -194,13 +213,13 @@ public class FileController {
 
     
     private void zipStatus(Context ctx) {
-        requireFilePerm(ctx, false);
+        PermissionMiddleware.requirePermission(ctx, im.xz.cn.lingconsole.common.permission.Permissions.PACKAGES);
         forward(ctx, call(() -> proxy.postJson(node(ctx), "/files/7zip/status", null, "{}")));
     }
 
     
     private void zipInstall(Context ctx) {
-        requireFilePerm(ctx, true);
+        PermissionMiddleware.requirePermission(ctx, im.xz.cn.lingconsole.common.permission.Permissions.PACKAGES);
         User user = AuthMiddleware.currentUser(ctx);
         forward(ctx, call(() -> proxy.postJson(node(ctx), "/files/7zip/install", null, "{}")));
         logService.record(user.getId(), "file.7zipInstall", node(ctx).getName(), "自动安装 7zip", ctx.ip());
@@ -239,18 +258,14 @@ public class FileController {
         requireFilePerm(ctx, false);
         forward(ctx, call(() -> proxy.get(node(ctx), "/files/drives", null)));
     }
-
-    
-    
-    
-
     
     private void requireFilePerm(Context ctx, boolean write) {
         String nodeId = ctx.pathParamMap().get("nodeId");
         String appId = ctx.pathParamMap().get("appId");
         if (appId != null && !appId.isBlank()) {
+            im.xz.cn.lingconsole.app.panel.service.NodePermissionIndex.requireCurrentOwnership(nodeId, appId);
             PermissionMiddleware.requirePermission(ctx,
-                    "lingconsole.file.app." + nodeId + "." + appId);
+                    "lingconsole.file.app." + appId);
         } else {
             PermissionMiddleware.requirePermission(ctx, "lingconsole.file.node." + nodeId);
         }

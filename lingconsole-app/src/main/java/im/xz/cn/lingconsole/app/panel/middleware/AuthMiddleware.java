@@ -45,13 +45,20 @@ public class AuthMiddleware {
         if (token == null || token.isBlank()) {
             token = ctx.header("X-LingConsole-Token");
         }
-        User user = sessionService.validateToken(token);
+        User user;
+        AuthUser auth;
+        try {
+            user = sessionService.validateToken(token);
+            auth = user == null ? null : permissionService.buildAuthUser(user);
+        } catch (RuntimeException e) {
+            throw ApiException.unauthorized("会话或权限状态无法验证");
+        }
         if (user == null) {
             throw ApiException.unauthorized("未登录或会话已过期");
         }
         ctx.attribute(ATTR_USER, user);
         ctx.attribute(ATTR_TOKEN, token);
-        ctx.attribute(ATTR_AUTH_USER, permissionService.buildAuthUser(user));
+        ctx.attribute(ATTR_AUTH_USER, auth);
     }
 
     public static User currentUser(Context ctx) {

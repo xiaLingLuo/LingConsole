@@ -35,7 +35,9 @@
         const grid = document.getElementById("app-grid");
         if (!grid) return;
         if (!apps || apps.length === 0) {
-            grid.innerHTML = '<div class="lc-card lc-app-empty">暂无应用, 点击右上角"新建应用"创建</div>';
+            grid.innerHTML = window.app.hasPermission("lingconsole.app.read.*")
+                ? '<div class="lc-card lc-app-empty">暂无应用, 点击右上角"新建应用"创建</div>'
+                : '<div class="lc-card lc-app-empty">您没有被授予可查看的应用权限</div>';
             return;
         }
         grid.innerHTML = apps.map(renderCard).join("");
@@ -74,13 +76,13 @@
         const primaryBtn = status === 3
             ? '<button class="lc-btn lc-btn--sm" data-action="stop" data-id="' + app.id + '">停止</button>'
             : '<button class="lc-btn lc-btn--sm lc-btn--primary" data-action="start" data-id="' + app.id + '">启动</button>';
-        const canWrite = window.app.hasPermission("lingconsole.app.write");
-        const advancedBtn = window.app.hasPermission("lingconsole.app.advanced")
+        const canWrite = window.app.hasPermission("lingconsole.app.write." + app.id);
+        const advancedBtn = window.app.hasPermission("lingconsole.app.advanced." + app.id)
         ? '<button class="lc-btn lc-btn--sm" data-action="advanced" data-id="' + app.id + '">高级</button> '
             : '';
-        const terminalBtn = window.app.hasPermission("lingconsole.terminal.app")
+        const terminalBtn = window.app.hasPermission("lingconsole.terminal.app." + app.id)
         ? '<a class="lc-btn lc-btn--sm" href="/terminal/' + NODE_ID + '/' + app.id + '">终端</a> ' : '';
-        const fileBtn = window.app.hasPermission("lingconsole.file.app")
+        const fileBtn = window.app.hasPermission("lingconsole.file.app." + app.id)
             ? '<a class="lc-btn lc-btn--sm" href="/files/app/' + NODE_ID + '/' + app.id + '">文件</a>' : '';
 
         return '<div class="lc-card lc-app-card">' +
@@ -142,6 +144,8 @@
         document.getElementById("app-modal").style.display = "flex";
         document.getElementById("app-id").value = "";
         document.getElementById("app-error").textContent = "";
+        const hint = document.getElementById("app-type-hint");
+        if (hint) hint.style.display = document.getElementById("app-type").value === "general" ? "" : "none";
     }
     function closeModal() {
         document.getElementById("app-modal").style.display = "none";
@@ -184,6 +188,8 @@
 
 
     let advancedAppId = null;
+    let advancedProtectionInitiallyEnabled = true;
+    let advancedProtectionDisableConfirmed = false;
 
     function openAdvanced(appId) {
         advancedAppId = appId;
@@ -198,6 +204,9 @@
             document.getElementById("adv-autorestart").checked = !!cfg.autoRestart;
             document.getElementById("adv-maxrestart").value = cfg.maxRestartCount || 3;
             document.getElementById("adv-workdir").value = cfg.workDir || "";
+            advancedProtectionInitiallyEnabled = cfg.protectAppFilesFromSymlinkEscape !== false;
+            advancedProtectionDisableConfirmed = false;
+            document.getElementById("adv-protect-app-files").checked = advancedProtectionInitiallyEnabled;
             document.getElementById("adv-runas").value = cfg.runAsUser || "";
             document.getElementById("adv-encoding").value = cfg.encoding || "UTF-8";
             document.getElementById("adv-pty").value = cfg.ptyType || "xterm-256color";
@@ -222,8 +231,20 @@
         });
     }
 
-    function saveAdvanced() {
+    async function confirmProtectionDisable() {
+        if (!advancedProtectionInitiallyEnabled || advancedProtectionDisableConfirmed) return true;
+        const confirmed = await LC.dialog.confirm("关闭后, 应用文件管理将允许跟随符号链接或 Junction 访问工作目录外的文件。确认关闭保护?");
+        advancedProtectionDisableConfirmed = confirmed;
+        return confirmed;
+    }
+
+    async function saveAdvanced() {
         if (!advancedAppId) return;
+        const protectAppFiles = document.getElementById("adv-protect-app-files").checked;
+        if (!protectAppFiles && !await confirmProtectionDisable()) {
+            document.getElementById("adv-protect-app-files").checked = true;
+            return;
+        }
         const args = document.getElementById("adv-args").value.split(",")
             .map(function (s) { return s.trim(); }).filter(function (s) { return s; });
         const env = {};
@@ -245,7 +266,9 @@
             encoding: document.getElementById("adv-encoding").value.trim(),
             ptyType: document.getElementById("adv-pty").value.trim(),
             args: args,
-            environment: env
+            environment: env,
+            protectAppFilesFromSymlinkEscape: protectAppFiles,
+            confirmDisableAppFileSymlinkProtection: !protectAppFiles && advancedProtectionDisableConfirmed
         }).then(function () {
             document.getElementById("adv-modal").style.display = "none";
             load();
@@ -265,6 +288,9 @@
             NODE_ID = urlNodeId || window.app.currentNode();
             if (urlNodeId) {
                 window.app.setCurrentNode(urlNodeId);
+            }
+            if (addBtn) {
+                addBtn.style.display = window.app.hasPermission("lingconsole.app.write.*") ? "" : "none";
             }
 
 
@@ -308,6 +334,19 @@
         document.getElementById("adv-modal").style.display = "none";
     });
     document.getElementById("btn-save-adv").addEventListener("click", saveAdvanced);
+    document.getElementById("adv-protect-app-files").addEventListener("change", async function (event) {
+        if (!event.target.checked && !await confirmProtectionDisable()) {
+            event.target.checked = true;
+        }
+    });
+
+    const appTypeSel = document.getElementById("app-type");
+    if (appTypeSel) {
+        appTypeSel.addEventListener("change", function () {
+            const hint = document.getElementById("app-type-hint");
+            if (hint) hint.style.display = appTypeSel.value === "general" ? "" : "none";
+        });
+    }
 
 
     window.app.onReady(init);

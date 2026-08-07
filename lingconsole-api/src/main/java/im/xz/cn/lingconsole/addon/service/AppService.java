@@ -22,25 +22,11 @@ import java.util.Map;
 
 
 public interface AppService {
-
-    
     List<Map<String, Object>> listApps(String nodeId);
-
-    
     Map<String, Object> createApp(String nodeId, String name, String command, List<String> args, String workDir);
-
-    
     boolean startApp(String nodeId, String appId);
-
-    
     boolean stopApp(String nodeId, String appId);
-
-    
     boolean restartApp(String nodeId, String appId);
-
-    
     List<String> appLogs(String nodeId, String appId, int count);
-
-    
     boolean signalApp(String nodeId, String appId, String signal);
 }

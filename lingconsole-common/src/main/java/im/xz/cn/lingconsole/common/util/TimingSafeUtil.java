@@ -32,9 +32,14 @@ public final class TimingSafeUtil {
         if (a == null || b == null) {
             return Objects.equals(a, b);
         }
-        byte[] ba = a.getBytes(java.nio.charset.StandardCharsets.UTF_8);
-        byte[] bb = b.getBytes(java.nio.charset.StandardCharsets.UTF_8);
-        return MessageDigest.isEqual(ba, bb);
+        try {
+            MessageDigest sha = MessageDigest.getInstance("SHA-256");
+            byte[] ha = sha.digest(a.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+            byte[] hb = sha.digest(b.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+            return MessageDigest.isEqual(ha, hb);
+        } catch (java.security.NoSuchAlgorithmException e) {
+            throw new IllegalStateException("SHA-256 不可用", e);
+        }
     }
 
     

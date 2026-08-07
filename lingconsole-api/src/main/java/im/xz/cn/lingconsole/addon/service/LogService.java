@@ -19,7 +19,5 @@ package im.xz.cn.lingconsole.addon.service;
 
 
 public interface LogService {
-
-    
     void record(String action, String target, String detail);
 }

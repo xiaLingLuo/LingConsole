@@ -41,12 +41,21 @@ public class PermissionGroupController {
     private final PermissionGroupRepository groupRepository;
     private final LogService logService;
     private final im.xz.cn.lingconsole.app.panel.service.NodePermissionIndex nodePermissionIndex;
+    private final im.xz.cn.lingconsole.app.panel.service.UserService userService;
+    private final im.xz.cn.lingconsole.app.panel.repository.UserGroupRepository userGroupRepository;
+    private final im.xz.cn.lingconsole.app.panel.service.SessionService sessionService;
 
     public PermissionGroupController(PermissionGroupRepository groupRepository, LogService logService,
-                                     im.xz.cn.lingconsole.app.panel.service.NodePermissionIndex nodePermissionIndex) {
+                                     im.xz.cn.lingconsole.app.panel.service.NodePermissionIndex nodePermissionIndex,
+                                     im.xz.cn.lingconsole.app.panel.service.UserService userService,
+                                     im.xz.cn.lingconsole.app.panel.repository.UserGroupRepository userGroupRepository,
+                                     im.xz.cn.lingconsole.app.panel.service.SessionService sessionService) {
         this.groupRepository = groupRepository;
         this.logService = logService;
         this.nodePermissionIndex = nodePermissionIndex;
+        this.userService = userService;
+        this.userGroupRepository = userGroupRepository;
+        this.sessionService = sessionService;
     }
 
     public void register(RoutesConfig routes, String prefix) {
@@ -106,7 +115,9 @@ public class PermissionGroupController {
         if (req.permissions() != null) {
             group.setPermissions(sanitize(req.permissions()));
         }
+        List<String> affectedUsers = usersInGroup(id);
         groupRepository.update(group);
+        affectedUsers.forEach(sessionService::logoutAllForUser);
         logService.record(AuthMiddleware.currentUser(ctx).getId(), "permissionGroup.update", group.getName(), "更新权限组", ctx.ip());
         ctx.json(ApiResponse.ok(group));
     }
@@ -127,7 +138,9 @@ public class PermissionGroupController {
     private void delete(Context ctx) {
         PermissionMiddleware.requirePermission(ctx, Permissions.PERMISSION_ASSIGN);
         String id = ctx.pathParam("id");
+        List<String> affectedUsers = usersInGroup(id);
         groupRepository.delete(id);
+        affectedUsers.forEach(sessionService::logoutAllForUser);
         logService.record(AuthMiddleware.currentUser(ctx).getId(), "permissionGroup.delete", id, "删除权限组", ctx.ip());
         ctx.json(ApiResponse.ok());
     }
@@ -168,6 +181,7 @@ public class PermissionGroupController {
             all.add("lingconsole.file.node." + nid);
             all.add("lingconsole.terminal.node." + nid);
             all.add("lingconsole.monitor.read." + nid);
+            grantable.add("lingconsole.node.read." + nid);
             grantable.add("lingconsole.node.write." + nid);
             grantable.add("lingconsole.file.node." + nid);
             grantable.add("lingconsole.terminal.node." + nid);
@@ -177,24 +191,36 @@ public class PermissionGroupController {
             labels.put("lingconsole.file.node." + nid, "节点文件管理: " + node.getName() + " ⚠高风险");
             labels.put("lingconsole.terminal.node." + nid, "节点终端: " + node.getName() + " ⚠高风险");
             labels.put("lingconsole.monitor.read." + nid, "节点监控: " + node.getName());
-            for (im.xz.cn.lingconsole.app.panel.service.NodePermissionIndex.AppRef app : nodePermissionIndex.appsOf(nid)) {
+        }
+
+
+        java.util.Map<String, String> appScopes = new java.util.LinkedHashMap<>();
+        for (im.xz.cn.lingconsole.app.panel.model.Node node : nodePermissionIndex.nodes()) {
+            for (im.xz.cn.lingconsole.app.panel.service.NodePermissionIndex.AppRef app : nodePermissionIndex.appsOf(node.getId())) {
                 String aid = app.id();
-                String scope = node.getName() + " / " + app.name();
-                all.add("lingconsole.app.read." + nid + "." + aid);
-                all.add("lingconsole.app.write." + nid + "." + aid);
-                all.add("lingconsole.app.advanced." + nid + "." + aid);
-                all.add("lingconsole.file.app." + nid + "." + aid);
-                all.add("lingconsole.terminal.app." + nid + "." + aid);
-                grantable.add("lingconsole.app.write." + nid + "." + aid);
-                grantable.add("lingconsole.app.advanced." + nid + "." + aid);
-                grantable.add("lingconsole.file.app." + nid + "." + aid);
-                grantable.add("lingconsole.terminal.app." + nid + "." + aid);
-                labels.put("lingconsole.app.read." + nid + "." + aid, "应用查看: " + scope);
-                labels.put("lingconsole.app.write." + nid + "." + aid, "应用管理: " + scope + " ⚠高风险");
-                labels.put("lingconsole.app.advanced." + nid + "." + aid, "应用高级配置: " + scope + " ⚠高风险");
-                labels.put("lingconsole.file.app." + nid + "." + aid, "应用文件管理: " + scope + " ⚠高风险");
-                labels.put("lingconsole.terminal.app." + nid + "." + aid, "应用终端: " + scope + " ⚠高风险");
+                if (aid != null && !aid.isBlank() && !appScopes.containsKey(aid)) {
+                    appScopes.put(aid, node.getName() + " / " + app.name());
+                }
             }
+        }
+        for (java.util.Map.Entry<String, String> e : appScopes.entrySet()) {
+            String aid = e.getKey();
+            String scope = e.getValue();
+            all.add("lingconsole.app.read." + aid);
+            all.add("lingconsole.app.write." + aid);
+            all.add("lingconsole.app.advanced." + aid);
+            all.add("lingconsole.file.app." + aid);
+            all.add("lingconsole.terminal.app." + aid);
+            grantable.add("lingconsole.app.read." + aid);
+            grantable.add("lingconsole.app.write." + aid);
+            grantable.add("lingconsole.app.advanced." + aid);
+            grantable.add("lingconsole.file.app." + aid);
+            grantable.add("lingconsole.terminal.app." + aid);
+            labels.put("lingconsole.app.read." + aid, "应用查看: " + scope);
+            labels.put("lingconsole.app.write." + aid, "应用管理: " + scope + " ⚠高风险");
+            labels.put("lingconsole.app.advanced." + aid, "应用高级配置: " + scope + " ⚠高风险");
+            labels.put("lingconsole.file.app." + aid, "应用文件管理: " + scope + " ⚠高风险");
+            labels.put("lingconsole.terminal.app." + aid, "应用终端: " + scope + " ⚠高风险");
         }
         all.addAll(im.xz.cn.lingconsole.common.permission.PluginPermissionRegistry.allKeys());
         labels.putAll(im.xz.cn.lingconsole.common.permission.PluginPermissionRegistry.all());
@@ -222,6 +248,8 @@ public class PermissionGroupController {
         labels.put(Permissions.PACKAGES, "包管理器");
         labels.put(Permissions.USER_BANNED, "封禁用户");
         labels.put(Permissions.PERMISSION_ASSIGN, "权限分配");
+        labels.put(Permissions.DASHBOARD_ADMIN, "仪表盘 (完整)");
+        labels.put(Permissions.DASHBOARD_USER, "仪表盘 (个人日志)");
         return labels;
     }
 
@@ -236,6 +264,14 @@ public class PermissionGroupController {
             }
         }
         return result;
+    }
+
+    private List<String> usersInGroup(String groupId) {
+        return userService.listUsers().stream()
+                .map(im.xz.cn.lingconsole.app.panel.model.User::getId)
+                .filter(id -> userGroupRepository.findGroupsByUser(id).stream()
+                        .anyMatch(group -> groupId.equals(group.getId())))
+                .toList();
     }
 
     public record GroupRequest(@JsonProperty("groupId") String groupId,

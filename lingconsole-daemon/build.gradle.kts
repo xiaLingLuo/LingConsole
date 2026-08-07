@@ -18,9 +18,9 @@ dependencies {
     implementation(project(":lingconsole-api"))
 
     implementation("io.javalin:javalin:7.2.2")
-    implementation("com.fasterxml.jackson.core:jackson-databind:2.19.2")
+    implementation("com.fasterxml.jackson.core:jackson-databind:2.22.1")
     implementation("org.tomlj:tomlj:1.1.1")
     implementation("org.jetbrains.pty4j:pty4j:0.13.12")
-    implementation("com.github.oshi:oshi-core:6.6.5")
+    implementation("com.github.oshi:oshi-core:7.4.3")
     implementation("ch.qos.logback:logback-classic:1.6.1")
 }

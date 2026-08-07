@@ -44,6 +44,7 @@ public class AppConfig extends TomlConfig {
     private Map<String, String> environment = new LinkedHashMap<>();
     private String encoding = "UTF-8";
     private String ptyType = "xterm-256color";
+    private boolean protectAppFilesFromSymlinkEscape = true;
 
     private AppConfig(TomlParseResult r) {
         super(r);
@@ -158,6 +159,14 @@ public class AppConfig extends TomlConfig {
         this.ptyType = ptyType;
     }
 
+    public boolean isProtectAppFilesFromSymlinkEscape() {
+        return protectAppFilesFromSymlinkEscape;
+    }
+
+    public void setProtectAppFilesFromSymlinkEscape(boolean protectAppFilesFromSymlinkEscape) {
+        this.protectAppFilesFromSymlinkEscape = protectAppFilesFromSymlinkEscape;
+    }
+
     public static AppConfig load(Path path) throws IOException {
         AppConfig cfg = new AppConfig(TomlConfig.parse(path));
         cfg.id = cfg.str("app.id", null);
@@ -173,6 +182,7 @@ public class AppConfig extends TomlConfig {
         cfg.environment = cfg.strMap("process.environment");
         cfg.encoding = cfg.str("terminal.encoding", "UTF-8");
         cfg.ptyType = cfg.str("terminal.ptyType", "xterm-256color");
+        cfg.protectAppFilesFromSymlinkEscape = cfg.bool("advanced.protectAppFilesFromSymlinkEscape", true);
         return cfg;
     }
 
@@ -219,6 +229,8 @@ public class AppConfig extends TomlConfig {
         sb.append("\n[terminal]\n");
         sb.append("encoding = \"").append(escape(encoding)).append("\"\n");
         sb.append("ptyType = \"").append(escape(ptyType)).append("\"\n");
+        sb.append("\n[advanced]\n");
+        sb.append("protectAppFilesFromSymlinkEscape = ").append(protectAppFilesFromSymlinkEscape).append("\n");
         return sb.toString();
     }
 

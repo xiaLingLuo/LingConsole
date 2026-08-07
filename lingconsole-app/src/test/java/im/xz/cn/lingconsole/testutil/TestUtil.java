@@ -67,6 +67,8 @@ public final class TestUtil {
         Files.createDirectories(dir.resolve("data"));
         Path configFile = dir.resolve("config.toml");
         String dbPath = dir.resolve("data").resolve("test.db").toString().replace("\\", "\\\\");
+        String firstPasswordFile = dataDir.resolve("first-launch-password.txt")
+                .toString().replace("\\", "\\\\");
         Files.writeString(configFile, """
                 [server]
                 host = "127.0.0.1"
@@ -74,10 +76,11 @@ public final class TestUtil {
 
                 [security]
                 rateLimitPerSecond = 100000
+                firstLaunchPasswordFile = "%s"
 
                 [database]
                 path = "%s"
-                """.formatted(port, dbPath));
+                """.formatted(port, firstPasswordFile, dbPath));
         return PanelConfig.load(configFile);
     }
 }

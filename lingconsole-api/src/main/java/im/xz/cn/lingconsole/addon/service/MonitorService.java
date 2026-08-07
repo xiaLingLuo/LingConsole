@@ -21,7 +21,5 @@ import java.util.Map;
 
 
 public interface MonitorService {
-
-    
     Map<String, Object> snapshot(String nodeId);
 }

@@ -43,6 +43,24 @@ public class SocketIOConnection {
     }
 
     
+    public String remoteIp() {
+        return session.remoteIp();
+    }
+
+    
+    public String origin() {
+        return session.origin();
+    }
+
+    public boolean markAuthenticated() {
+        return server.markAuthenticated(session);
+    }
+
+    public boolean isAuthenticated() {
+        return session.isAuthenticated();
+    }
+
+    
     public void emit(String event, Object data) {
         server.sendTo(session, namespace, event, data);
     }

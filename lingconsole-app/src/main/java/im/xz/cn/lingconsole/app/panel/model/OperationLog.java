@@ -24,7 +24,15 @@ import com.fasterxml.jackson.annotation.JsonInclude;
 public class OperationLog {
 
     private String id;
+    private String sourceType;
+    private String pluginName;
+    private String actorType;
     private String userId;
+    private String username;
+    private String nodeId;
+    private String nodeName;
+    private String appId;
+    private String requestId;
     private String action;
     private String target;
     private String detail;
@@ -39,6 +47,13 @@ public class OperationLog {
         this.id = id;
     }
 
+    public String getSourceType() { return sourceType; }
+    public void setSourceType(String sourceType) { this.sourceType = sourceType; }
+    public String getPluginName() { return pluginName; }
+    public void setPluginName(String pluginName) { this.pluginName = pluginName; }
+    public String getActorType() { return actorType; }
+    public void setActorType(String actorType) { this.actorType = actorType; }
+
     public String getUserId() {
         return userId;
     }
@@ -46,6 +61,17 @@ public class OperationLog {
     public void setUserId(String userId) {
         this.userId = userId;
     }
+
+    public String getUsername() { return username; }
+    public void setUsername(String username) { this.username = username; }
+    public String getNodeId() { return nodeId; }
+    public void setNodeId(String nodeId) { this.nodeId = nodeId; }
+    public String getNodeName() { return nodeName; }
+    public void setNodeName(String nodeName) { this.nodeName = nodeName; }
+    public String getAppId() { return appId; }
+    public void setAppId(String appId) { this.appId = appId; }
+    public String getRequestId() { return requestId; }
+    public void setRequestId(String requestId) { this.requestId = requestId; }
 
     public String getAction() {
         return action;

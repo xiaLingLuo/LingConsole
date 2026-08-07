@@ -43,6 +43,14 @@ class Argon2UtilTest {
         assertFalse(Argon2Util.verify("any", null));
         assertFalse(Argon2Util.verify("any", "not-a-hash"));
         assertFalse(Argon2Util.verify("any", "argon2id$v=19$bad"));
+        assertFalse(Argon2Util.verify("any",
+                "argon2id$v=19$m=2147483647,t=3,p=4$00112233445566778899aabbccddeeff$"
+                        + "0000000000000000000000000000000000000000000000000000000000000000"));
+        assertFalse(Argon2Util.verify("any",
+                "argon2id$v=19$m=65536,t=999,p=4$00112233445566778899aabbccddeeff$"
+                        + "0000000000000000000000000000000000000000000000000000000000000000"));
+        assertFalse(Argon2Util.verify("any",
+                "argon2id$v=19$m=65536,t=3,p=4$" + "00".repeat(65) + "$" + "00".repeat(32)));
     }
 
     @Test

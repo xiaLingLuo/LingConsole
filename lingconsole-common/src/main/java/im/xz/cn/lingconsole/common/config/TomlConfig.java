@@ -23,6 +23,7 @@ import org.tomlj.TomlParseResult;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.attribute.PosixFilePermissions;
 import java.util.List;
 import java.util.Map;
 
@@ -121,6 +122,11 @@ public abstract class TomlConfig {
                 Files.createDirectories(path.getParent());
             }
             Files.writeString(path, defaultContent, java.nio.charset.StandardCharsets.UTF_8);
+            try {
+                Files.setPosixFilePermissions(path, PosixFilePermissions.fromString("rw-------"));
+            } catch (UnsupportedOperationException ignore) {
+                assert true;
+            }
         }
     }
 }
